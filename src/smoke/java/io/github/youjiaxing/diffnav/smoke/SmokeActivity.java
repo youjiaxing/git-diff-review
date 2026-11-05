@@ -74,16 +74,19 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
         }
         if (step == 0) {
             var window = ToolWindowManager.getInstance(project).getToolWindow("Commit");
-            if (window == null) return;
+            if (window == null) {
+                if (ticks % 15 == 0) log("WAIT no Commit toolwindow; windows=" + java.util.Arrays.toString(ToolWindowManager.getInstance(project).getToolWindowIds()));
+                return;
+            }
             window.show();
             var panel = find(window.getContentManager().getComponent(), GitStagePanel.class);
-            if (panel == null) return;
+            if (panel == null) { if (ticks % 15 == 0) log("WAIT staging panel not initialized"); return; }
             var all = GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(panel.getTree());
             var main = all.find(w -> w.getFilePath().getName().equals("main.go"));
-            if (main == null) return;
+            if (main == null) { if (ticks % 15 == 0) log("WAIT main file status unavailable; changes=" + all); return; }
             preview = (EditorTabDiffPreview) DiffDataKeys.EDITOR_TAB_DIFF_PREVIEW.getData(
                     DataManager.getInstance().getDataContext(panel));
-            if (preview == null) return;
+            if (preview == null) { if (ticks % 15 == 0) log("WAIT preview unavailable"); return; }
             GitStageDiffPreviewHandler.INSTANCE.selectChange(panel.getTree(), main);
             preview.openPreview(true);
             step = 1;
