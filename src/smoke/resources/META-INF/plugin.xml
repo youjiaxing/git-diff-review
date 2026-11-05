@@ -1,0 +1,13 @@
+<idea-plugin>
+  <id>io.github.youjiaxing.diffnav.smoke</id>
+  <name>Diff Navigation Sandbox Checks</name>
+  <version>0.1.0</version>
+  <vendor>youjiaxing</vendor>
+  <idea-version since-build="262" until-build="262.*"/>
+  <depends>com.intellij.modules.platform</depends>
+  <depends>io.github.youjiaxing.goland-diff-navigation</depends>
+  <depends>Git4Idea</depends>
+  <extensions defaultExtensionNs="com.intellij">
+    <postStartupActivity implementation="io.github.youjiaxing.diffnav.smoke.SmokeActivity"/>
+  </extensions>
+</idea-plugin>

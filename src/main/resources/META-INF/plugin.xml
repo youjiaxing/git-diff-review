@@ -1,0 +1,36 @@
+<idea-plugin>
+  <id>io.github.youjiaxing.goland-diff-navigation</id>
+  <name>GoLand Diff Navigation</name>
+  <version>0.1.0</version>
+  <vendor url="https://github.com/youjiaxing">youjiaxing</vendor>
+  <description><![CDATA[
+    <p>Follow code navigation inside Git Staging diffs while keeping the Commit preview,
+    staging controls, target position and a review navigation history.</p>
+    <p>Experimental compatibility adapter for GoLand 2026.2 (build 262).</p>
+  ]]></description>
+  <idea-version since-build="262" until-build="262.*"/>
+  <depends>com.intellij.modules.platform</depends>
+  <depends>Git4Idea</depends>
+  <extensions defaultExtensionNs="com.intellij">
+    <navigation.navigationHandler implementation="io.github.youjiaxing.diffnav.StageNavigationHandler"/>
+    <gotoDeclarationHandler implementation="io.github.youjiaxing.diffnav.IndexDeclarationHandler" order="first"/>
+    <diff.DiffExtension implementation="io.github.youjiaxing.diffnav.NavigationDiffExtension"/>
+    <actionPromoter implementation="io.github.youjiaxing.diffnav.ReviewHistoryPromoter"/>
+  </extensions>
+  <applicationListeners>
+    <listener class="io.github.youjiaxing.diffnav.ReviewActionListener"
+              topic="com.intellij.openapi.actionSystem.ex.AnActionListener"/>
+  </applicationListeners>
+  <actions>
+    <action id="DiffNavigation.Back" class="io.github.youjiaxing.diffnav.ReviewBackAction"
+            text="Review Back" description="Return to the previous file and position in the staging diff"
+            use-shortcut-of="Back"/>
+    <action id="DiffNavigation.Forward" class="io.github.youjiaxing.diffnav.ReviewForwardAction"
+            text="Review Forward" description="Return to the next file and position in the staging diff"
+            use-shortcut-of="Forward"/>
+    <action id="DiffNavigation.Enabled" class="io.github.youjiaxing.diffnav.ToggleNavigationAction"
+            text="Navigate Within Staging Diff" description="Keep code navigation inside the Commit staging diff">
+      <add-to-group group-id="Diff.EditorPopupMenu" anchor="last"/>
+    </action>
+  </actions>
+</idea-plugin>
