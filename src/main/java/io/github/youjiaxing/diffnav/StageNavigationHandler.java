@@ -1,6 +1,5 @@
 package io.github.youjiaxing.diffnav;
 
-import com.intellij.diff.tools.util.DiffDataKeys;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ApplicationManager;
@@ -16,15 +15,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class StageNavigationHandler implements NavigationHandler {
     @Override
     public boolean navigate(NavigationRequest request, NavigationOptions options, DataContext context) {
-        if (!(request instanceof SourceNavigationRequest source)) return false;
         Project project = CommonDataKeys.PROJECT.getData(context);
-        if (project == null || project.isDisposed() || DiffDataKeys.DIFF_CONTEXT.getData(context) == null) return false;
+        if (project == null || project.isDisposed()) return false;
+        if (!(request instanceof SourceNavigationRequest source)) return false;
         var app = ApplicationManager.getApplication();
         if (!app.isDispatchThread() && app.isReadAccessAllowed()) return false;
         AtomicBoolean consumed = new AtomicBoolean();
         Runnable navigate = () -> {
             if (!project.isDisposed()) {
-                consumed.set(project.getService(StageNavigationService.class).navigate(source, options, context));
+                var service = project.getService(StageNavigationService.class);
+                consumed.set(service.navigate(source, options, context));
             }
         };
         if (app.isDispatchThread()) navigate.run();

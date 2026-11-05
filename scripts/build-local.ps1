@@ -27,9 +27,13 @@ $testClasses = Join-Path $output 'test-classes'
 if ($LASTEXITCODE -ne 0) { throw 'Test compilation failed.' }
 & "$JdkPath\bin\java.exe" -cp "$testClasses;$classes;$cp" io.github.youjiaxing.diffnav.ReviewHistoryTest
 if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed.' }
-$jar = Join-Path $package 'goland-diff-navigation-0.1.0.jar'
+foreach ($testClass in @('SelectedLinesTest', 'GitIndexTransactionTest')) {
+    & "$JdkPath\bin\java.exe" -cp "$testClasses;$classes;$cp" "io.github.youjiaxing.diffnav.$testClass"
+    if ($LASTEXITCODE -ne 0) { throw "$testClass failed." }
+}
+$jar = Join-Path $package 'goland-diff-navigation-0.3.0.jar'
 & "$JdkPath\bin\jar.exe" --create --file $jar -C $classes . -C "$root\src\main\resources" .
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed.' }
-$zip = Join-Path $output 'goland-diff-navigation-0.1.0.zip'
+$zip = Join-Path $output 'goland-diff-navigation-0.3.0.zip'
 Compress-Archive -LiteralPath (Join-Path $output 'goland-diff-navigation') -DestinationPath $zip -Force
 Write-Output "Built for $($product.name) $($product.version) ($($product.buildNumber)): $zip"

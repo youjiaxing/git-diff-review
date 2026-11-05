@@ -44,5 +44,15 @@ val verifyNavigation by tasks.registering(JavaExec::class) {
     mainClass = "io.github.youjiaxing.diffnav.ReviewHistoryTest"
 }
 
-tasks.check { dependsOn(verifyNavigation) }
-tasks.named("buildPlugin") { dependsOn(verifyNavigation) }
+val verifySelectedLines by tasks.registering(JavaExec::class) {
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass = "io.github.youjiaxing.diffnav.SelectedLinesTest"
+}
+val verifyGitIndex by tasks.registering(JavaExec::class) {
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass = "io.github.youjiaxing.diffnav.GitIndexTransactionTest"
+}
+tasks.check { dependsOn(verifyNavigation, verifySelectedLines, verifyGitIndex) }
+tasks.named("buildPlugin") { dependsOn(verifyNavigation, verifySelectedLines, verifyGitIndex) }

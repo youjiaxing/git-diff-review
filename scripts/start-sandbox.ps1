@@ -14,7 +14,7 @@ $options = Join-Path $sandbox 'config\options'
 $pluginLib = Join-Path $sandbox 'plugins\goland-diff-navigation\lib'
 $testLib = Join-Path $sandbox 'plugins\diffnav-smoke\lib'
 New-Item -ItemType Directory -Path $fixture,$options,$pluginLib,$testLib -Force | Out-Null
-Copy-Item -LiteralPath "$root\build\local\goland-diff-navigation\lib\goland-diff-navigation-0.1.0.jar" -Destination $pluginLib
+Copy-Item -LiteralPath "$root\build\local\goland-diff-navigation\lib\goland-diff-navigation-0.3.0.jar" -Destination $pluginLib
 $cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$root\build\local\classes"
 $testClasses = Join-Path $sandbox 'smoke-classes'
 $sources = @(Get-ChildItem -LiteralPath "$root\src\smoke\java" -Filter '*.java' -Recurse | ForEach-Object FullName)
@@ -31,6 +31,9 @@ Set-Content -LiteralPath "$fixture\b.go" -Encoding utf8 -Value "package main`n`n
 Set-Content -LiteralPath "$fixture\c.go" -Encoding utf8 -Value "package main`n`nfunc C() int { return Clean() }"
 Set-Content -LiteralPath "$fixture\clean.go" -Encoding utf8 -Value "package main`n`nfunc Clean() int { return 1 }`nfunc UnchangedCaller() int { return B() }"
 Set-Content -LiteralPath "$fixture\partial.go" -Encoding utf8 -Value "package main`n`nfunc Partial() int { return B() }"
+Set-Content -LiteralPath "$fixture\lines.txt" -Encoding utf8 -Value "head`nanchor`ntail"
+Set-Content -LiteralPath "$fixture\replace.txt" -Encoding utf8 -Value "oldOne`noldTwo`ntail"
+Set-Content -LiteralPath "$fixture\deleted.txt" -Encoding utf8 -Value "delOne`ndelTwo"
 & git -C $fixture init --initial-branch=main | Out-Null
 & git -C $fixture -c user.name='Diff Navigation Test' -c user.email='test@example.invalid' add .
 & git -C $fixture -c user.name='Diff Navigation Test' -c user.email='test@example.invalid' commit -qm 'test: sandbox baseline'
@@ -42,6 +45,10 @@ Set-Content -LiteralPath "$fixture\main.go" -Encoding utf8 -Value "package main`
 Set-Content -LiteralPath "$fixture\partial.go" -Encoding utf8 -Value "package main`n`nfunc Partial() int { return B() + 1 }"
 & git -C $fixture add partial.go
 Set-Content -LiteralPath "$fixture\partial.go" -Encoding utf8 -Value "package main`n`n// worktree-only`nfunc Partial() int { return B() + 1 }"
+Set-Content -LiteralPath "$fixture\lines.txt" -Encoding utf8 -Value "head`none`ntwo`nthree`nanchor`ntail"
+Set-Content -LiteralPath "$fixture\replace.txt" -Encoding utf8 -Value "newOneLong`nnewTwoLong`ntail"
+[IO.File]::WriteAllText((Join-Path $fixture 'new-no-eol.txt'), 'newOnly', [Text.UTF8Encoding]::new($false))
+Remove-Item -LiteralPath (Join-Path $fixture 'deleted.txt')
 }
 $vmOptions = Join-Path $sandbox 'sandbox.vmoptions'
 $originalOptions = Get-Content -LiteralPath "$IdePath\bin\goland64.exe.vmoptions"
@@ -55,11 +62,14 @@ $sandboxOptions = @(
     '-Didea.config.imported.in.current.session=true',
     '-Djb.consents.confirmation.enabled=false',
     '-Dide.show.tips.on.startup.default.value=false'
+    '-Dide.experimental.ui.onboarding=false'
+    '-Dllm.show.ai.promotion.window.on.start=false'
 )
 Set-Content -LiteralPath $vmOptions -Encoding utf8 -Value ($originalOptions + $sandboxOptions)
 $previous = $env:GOLAND_VM_OPTIONS
 try {
     $env:GOLAND_VM_OPTIONS = $vmOptions
+    Set-Content -LiteralPath "$sandbox\smoke-report.txt" -Encoding utf8 -Value ''
     $process = Start-Process -FilePath "$IdePath\bin\goland64.exe" -ArgumentList ('"' + $fixture + '"') -PassThru -WindowStyle Hidden
     Write-Output "Sandbox launcher PID: $($process.Id). Report: $sandbox\smoke-report.txt"
 } finally { $env:GOLAND_VM_OPTIONS = $previous }

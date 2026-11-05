@@ -29,7 +29,22 @@ public final class ReviewHistoryTest {
         check(count == 4, "history memory bound");
         history.clear();
         check(history.current() == null && history.peek(1) == null, "dispose/reset");
-        System.out.println("ReviewHistoryTest: 10 regression checks passed");
+        history.record(a, b);
+        history.record(b, c);
+        history.discardNext(-1);
+        check(history.current().equals(c) && history.peek(-1).equals(a), "discard invalid predecessor without losing remaining history");
+        history.commitTravel(-1, c, new Place("a.go", 15));
+        check(history.current().line() == 15 && history.peek(1).equals(c), "replace remapped destination after travel");
+        history.discardNext(1);
+        check(history.current().line() == 15 && history.peek(1) == null, "discard invalid forward destination without moving cursor");
+        var disposed = new java.util.ArrayList<Place>();
+        var owned = new ReviewHistory<Place>(2, (x, y) -> x.file().equals(y.file()), disposed::add);
+        owned.record(a, b);
+        owned.record(b, c);
+        check(disposed.contains(a) && !disposed.contains(b), "evicted positions are released while live positions remain");
+        owned.clear();
+        check(disposed.size() == 3, "closing history releases each owned position");
+        System.out.println("ReviewHistoryTest: 15 regression checks passed");
     }
     private static void check(boolean passed, String name) {
         if (!passed) throw new AssertionError(name);

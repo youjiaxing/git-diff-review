@@ -4,18 +4,25 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 
 /** Bounded review history. A failed navigation must not consume a history entry. */
 final class ReviewHistory<T> {
     private final int limit;
     private final BiPredicate<T, T> samePlace;
+    private final Consumer<T> release;
     private final List<T> entries = new ArrayList<>();
     private int cursor = -1;
 
     ReviewHistory(int limit, BiPredicate<T, T> samePlace) {
+        this(limit, samePlace, ignored -> {});
+    }
+
+    ReviewHistory(int limit, BiPredicate<T, T> samePlace, Consumer<T> release) {
         if (limit < 2) throw new IllegalArgumentException("History needs at least two entries");
         this.limit = limit;
         this.samePlace = samePlace;
+        this.release = release;
     }
 
     void record(T from, T to) {
@@ -23,13 +30,13 @@ final class ReviewHistory<T> {
             clear();
             entries.add(from);
             cursor = 0;
-        } else entries.set(cursor, from);
+        } else replace(cursor, from);
         if (Objects.equals(from, to)) return;
-        entries.subList(cursor + 1, entries.size()).clear();
+        while (entries.size() > cursor + 1) release.accept(entries.removeLast());
         entries.add(to);
         cursor++;
         if (entries.size() > limit) {
-            entries.removeFirst();
+            release.accept(entries.removeFirst());
             cursor--;
         }
     }
@@ -44,9 +51,25 @@ final class ReviewHistory<T> {
 
     void commitTravel(int direction, T departed) {
         if (peek(direction) == null) throw new IllegalStateException("No history in that direction");
-        entries.set(cursor, departed);
+        replace(cursor, departed);
         cursor += direction;
     }
 
-    void clear() { entries.clear(); cursor = -1; }
+    void commitTravel(int direction, T departed, T arrived) {
+        commitTravel(direction, departed);
+        replace(cursor, arrived);
+    }
+
+    void discardNext(int direction) {
+        if (peek(direction) == null) throw new IllegalStateException("No history in that direction");
+        release.accept(entries.remove(cursor + direction));
+        if (direction < 0) cursor--;
+    }
+
+    private void replace(int index, T value) {
+        T old = entries.set(index, value);
+        if (old != value) release.accept(old);
+    }
+
+    void clear() { entries.forEach(release); entries.clear(); cursor = -1; }
 }

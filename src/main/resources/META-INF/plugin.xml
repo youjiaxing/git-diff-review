@@ -1,27 +1,52 @@
 <idea-plugin>
   <id>io.github.youjiaxing.goland-diff-navigation</id>
   <name>GoLand Diff Navigation</name>
-  <version>0.1.0</version>
+  <version>0.3.0</version>
   <vendor url="https://github.com/youjiaxing">youjiaxing</vendor>
   <description><![CDATA[
-    <p>Follow code navigation inside Git Staging diffs while keeping the Commit preview,
-    staging controls, target position and a review navigation history.</p>
+    <p>Follow code navigation across Git Staging diffs, unchanged source and single usage results.
+    Keep the Commit preview, staging controls and mixed source/diff Back/Forward history.</p>
+    <p>Configure automatic review sessions and staged-only scope under Version Control.
+    Pause review or inspect the latest navigation reason from the status bar.</p>
+    <p>Stage or unstage selected lines from a floating toolbar. Active source tabs locate
+    matching files in the visible Commit tree while preserving manual multi-selection.</p>
     <p>Experimental compatibility adapter for GoLand 2026.2 (build 262).</p>
   ]]></description>
   <idea-version since-build="262" until-build="262.*"/>
   <depends>com.intellij.modules.platform</depends>
   <depends>Git4Idea</depends>
   <extensions defaultExtensionNs="com.intellij">
+    <postStartupActivity implementation="io.github.youjiaxing.diffnav.NavigationStartup"/>
     <navigation.navigationHandler implementation="io.github.youjiaxing.diffnav.StageNavigationHandler"/>
     <gotoDeclarationHandler implementation="io.github.youjiaxing.diffnav.IndexDeclarationHandler" order="first"/>
     <diff.DiffExtension implementation="io.github.youjiaxing.diffnav.NavigationDiffExtension"/>
     <actionPromoter implementation="io.github.youjiaxing.diffnav.ReviewHistoryPromoter"/>
+    <projectConfigurable parentId="version.control" id="io.github.youjiaxing.diffnav.settings"
+                         displayName="GoLand Diff Navigation" instance="io.github.youjiaxing.diffnav.NavigationConfigurable"/>
+    <statusBarWidgetFactory id="GoLandDiffReview" implementation="io.github.youjiaxing.diffnav.ReviewStatusWidgetFactory"/>
   </extensions>
   <applicationListeners>
     <listener class="io.github.youjiaxing.diffnav.ReviewActionListener"
               topic="com.intellij.openapi.actionSystem.ex.AnActionListener"/>
   </applicationListeners>
   <actions>
+    <action id="DiffNavigation.SelectedLines" class="io.github.youjiaxing.diffnav.StageSelectedLinesAction"
+            text="Stage / Unstage 选中行" description="只操作选中的连续行">
+      <add-to-group group-id="Diff.EditorPopupMenu" anchor="first"/>
+    </action>
+    <action id="DiffNavigation.ToggleReview" class="io.github.youjiaxing.diffnav.ToggleReviewAction"
+            text="Start / Pause Diff Review" description="Start or pause this staging review session">
+      <add-to-group group-id="Diff.EditorPopupMenu" anchor="last"/>
+      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+    </action>
+    <action id="DiffNavigation.Diagnostics" class="io.github.youjiaxing.diffnav.NavigationDiagnosticsAction"
+            text="Diff Review Navigation Reason" description="Explain the last review navigation result"/>
+    <action id="DiffNavigation.OpenSource" class="io.github.youjiaxing.diffnav.OpenReviewSourceAction"
+            text="Open Review File as Source" description="Open this file as source while preserving the review session">
+      <add-to-group group-id="Diff.EditorPopupMenu" anchor="last"/>
+    </action>
+    <action id="DiffNavigation.Settings" class="io.github.youjiaxing.diffnav.NavigationSettingsAction"
+            text="GoLand Diff Navigation Settings"/>
     <action id="DiffNavigation.Back" class="io.github.youjiaxing.diffnav.ReviewBackAction"
             text="Review Back" description="Return to the previous file and position in the staging diff"
             use-shortcut-of="Back"/>
@@ -29,7 +54,7 @@
             text="Review Forward" description="Return to the next file and position in the staging diff"
             use-shortcut-of="Forward"/>
     <action id="DiffNavigation.Enabled" class="io.github.youjiaxing.diffnav.ToggleNavigationAction"
-            text="Navigate Within Staging Diff" description="Keep code navigation inside the Commit staging diff">
+            text="Enable Diff Review Navigation" description="Enable review navigation for this project">
       <add-to-group group-id="Diff.EditorPopupMenu" anchor="last"/>
     </action>
   </actions>
