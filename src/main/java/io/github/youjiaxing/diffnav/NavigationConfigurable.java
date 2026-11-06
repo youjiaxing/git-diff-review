@@ -16,7 +16,7 @@ public final class NavigationConfigurable implements SearchableConfigurable {
     private JComboBox<NavigationSettings.TargetScope> scope;
     public NavigationConfigurable(Project project) { this.project = project; }
     @Override public String getId() { return "io.github.youjiaxing.diffnav.settings"; }
-    @Override public String getDisplayName() { return "GoLand Diff Navigation"; }
+    @Override public String getDisplayName() { return "Git Diff Review"; }
     @Override public JComponent createComponent() {
         enabled = new JCheckBox("启用 Diff 审阅导航");
         autoStart = new JCheckBox("从暂存区 Diff 跳转时自动开始审阅");

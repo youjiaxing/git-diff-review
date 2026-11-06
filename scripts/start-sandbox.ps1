@@ -11,10 +11,21 @@ $sandbox = Join-Path (Join-Path $root 'build') $SandboxName
 $fixture = Join-Path $sandbox 'diffnav-fixture'
 if ((Test-Path -LiteralPath "$fixture\.git") -and !$Reuse) { throw 'A sandbox fixture already exists. Use -Reuse to run again.' }
 $options = Join-Path $sandbox 'config\options'
-$pluginLib = Join-Path $sandbox 'plugins\goland-diff-navigation\lib'
+$pluginLib = Join-Path $sandbox 'plugins\git-diff-review\lib'
 $testLib = Join-Path $sandbox 'plugins\diffnav-smoke\lib'
+foreach ($sandboxPlugin in @('goland-diff-navigation', 'git-diff-review')) {
+    $oldSandboxPlugin = Join-Path $sandbox "plugins\$sandboxPlugin"
+    if (Test-Path -LiteralPath $oldSandboxPlugin) {
+        $resolvedSandboxPlugin = (Resolve-Path -LiteralPath $oldSandboxPlugin).Path
+        $expectedSandboxPlugin = [IO.Path]::GetFullPath($oldSandboxPlugin)
+        if ($resolvedSandboxPlugin -ne $expectedSandboxPlugin -or !$resolvedSandboxPlugin.StartsWith($root + '\build\', [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Unexpected sandbox plugin cleanup path.'
+        }
+        Remove-Item -LiteralPath $resolvedSandboxPlugin -Recurse -Force
+    }
+}
 New-Item -ItemType Directory -Path $fixture,$options,$pluginLib,$testLib -Force | Out-Null
-Copy-Item -LiteralPath "$root\build\local\goland-diff-navigation\lib\goland-diff-navigation-0.3.0.jar" -Destination $pluginLib
+Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.1.jar" -Destination $pluginLib
 $cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$root\build\local\classes"
 $testClasses = Join-Path $sandbox 'smoke-classes'
 $sources = @(Get-ChildItem -LiteralPath "$root\src\smoke\java" -Filter '*.java' -Recurse | ForEach-Object FullName)

@@ -26,7 +26,7 @@ java {
 
 intellijPlatform {
     pluginConfiguration {
-        name = "GoLand Diff Navigation"
+        name = "Git Diff Review"
         ideaVersion {
             sinceBuild = "262"
             untilBuild = "262.*"

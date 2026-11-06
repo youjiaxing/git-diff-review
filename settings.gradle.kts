@@ -1,1 +1,1 @@
-rootProject.name = "goland-diff-navigation"
+rootProject.name = "git-diff-review"

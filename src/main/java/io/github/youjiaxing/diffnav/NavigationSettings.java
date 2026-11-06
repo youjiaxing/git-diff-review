@@ -7,7 +7,7 @@ import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.project.Project;
 
 @Service(Service.Level.PROJECT)
-@State(name = "GoLandDiffNavigation", storages = @Storage("diff-navigation.xml"))
+@State(name = "GitDiffReview", storages = @Storage("diff-navigation.xml"))
 public final class NavigationSettings implements PersistentStateComponent<NavigationSettings.Options> {
     public enum TargetScope {
         FOLLOW_TARGET("跟随本地导航目标"), STAGED_ONLY("只审已暂存修改");

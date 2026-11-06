@@ -1,6 +1,8 @@
-# GoLand Diff Navigation
+# Git Diff Review
 
-在 GoLand 的 Git 暂存区 Diff 中跟随代码跳转，继续在同一个「提交」预览标签页审阅目标文件。
+增强 JetBrains IDE 的 Git 暂存区审阅：在 Diff 中跟随代码跳转、按选中行暂存，并让提交面板跟随活动文件。
+
+项目地址：[youjiaxing/git-diff-review](https://github.com/youjiaxing/git-diff-review)。当前完成实际验证的是 GoLand 2026.2（平台 build 262）；其他 JetBrains IDE 尚未完成兼容性验证。
 
 ## 行为
 
@@ -13,7 +15,7 @@
 - 源码标签不会被自动关闭；只有显式点击 Stage／Unstage 选中行才写入 Git 暂存区，不执行 commit 或改写工作区。
 - 状态栏 **Diff Review: On / Idle / Off** 显示会话状态；点击可暂停审阅、查看最近导航原因或打开设置。
 - Diff／源码右键 **Start / Pause Diff Review** 控制会话；Diff 右键 **Open Review File as Source** 单次打开源码并保留返回路径。
-- **设置 → 版本控制 → GoLand Diff Navigation**：持久化项目启用偏好、自动开始和目标比较范围。会话及历史不跨重启恢复。
+- **设置 → 版本控制 → Git Diff Review**：持久化项目启用偏好、自动开始和目标比较范围。会话及历史不跨重启恢复。
 - 手动切到无关源码后不继续接管；关闭所属 Diff 预览会释放会话。
 
 ## 按行暂存与取消暂存
@@ -54,7 +56,7 @@ INDEX 文件与工作区内容相同时，声明解析会使用工作区 PSI 上
   -JdkPath 'C:\path\to\jdk-25'
 ```
 
-输出 `build/local/goland-diff-navigation-0.3.0.zip`。脚本会先运行历史、选中行变换及独立临时 Git 仓库的事务检查。
+输出 `build/local/git-diff-review-0.3.1.zip`。脚本会先运行历史、选中行变换及独立临时 Git 仓库的事务检查。
 
 标准 Gradle 构建使用 [IntelliJ Platform Gradle Plugin](https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html)：
 
@@ -84,7 +86,13 @@ GoLand → 设置 → 插件 → 齿轮 → 从磁盘安装插件，选择生成
 
 本机已安装旧版时，也可运行 `scripts/install-local.ps1 -IdePath ... -JdkPath ...`：备份旧版并使用 IDE 原生启动更新队列安排升级，不结束当前 IDE。`-VerifyOnly` 在 `build/` 隔离目录验证更新，不修改日常安装。
 
-卸载：设置 → 插件 → GoLand Diff Navigation → 卸载。审阅历史仅保存在内存中。
+0.3.1 起插件名称为 **Git Diff Review**，ID 为 `io.github.youjiaxing.git-diff-review`，目录及安装包统一为 `git-diff-review`。旧名称为 GoLand Diff Navigation，旧 ID 为 `io.github.youjiaxing.goland-diff-navigation`。这是一次有意的重新安装，旧 ID 不作为升级身份保留。
+
+使用安装脚本时，会备份并在下次启动删除旧、新两个安装目录，再只安装新 ID；同时替换本插件遗留的待安装任务，保留其他插件的队列任务。若手动安装 ZIP，请先卸载旧 ID 的插件，避免同时启用两份。项目偏好以新组件名保存，旧偏好不会自动迁移；Git 仓库与审阅中的源码不受影响。
+
+安装脚本默认从指定 IDE 的 `product-info.json` 推导配置和系统目录；自定义位置可显式传入 `-ConfigPath` 和 `-SystemPath`。测试启动脚本仍以 GoLand 为验证环境。
+
+卸载：设置 → 插件 → Git Diff Review → 卸载。审阅历史仅保存在内存中。
 
 ## 实现入口
 

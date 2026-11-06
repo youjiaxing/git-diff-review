@@ -4,6 +4,17 @@
 
 ## 已完成
 
+### 0.3.1 项目与插件重命名
+
+- 本地项目目录、构建名、安装包、插件显示名和插件 ID 统一为 Git Diff Review / `git-diff-review`；Java 包和既有 action ID 保留。
+- 本地 SDK 构建通过：15 项历史、14 项选区变换、20 项真实临时 Git 仓库事务检查。
+- 新 ID 的正式插件和 smoke 插件在独立 GoLand 配置中加载，`build/sandbox-rename-v031/smoke-report.txt` 为 `PASS 69 integration checks`；测试实例已关闭。
+- 正式 ZIP 核验：只有 `git-diff-review/lib/git-diff-review-0.3.1.jar`，描述符 ID、显示名及版本正确，不包含 smoke 或测试类。
+- `install-local.ps1 -VerifyOnly` 验证同时存在新旧安装目录时，启动更新后仅留下新目录与 0.3.1 JAR。
+- 独立审查发现复用 sandbox 会残留旧 ID；已增加仅在项目 `build/` 内清理新旧两个插件目录的路径检查和处理。该修正经代码核查，未再次启动完整集成测试。
+- 日常 GoLand 已安排下次启动迁移，已备份旧版；本次未关闭或重启日常 IDE。实际重启后加载新 ID 尚待确认，旧项目偏好不自动迁移。
+- 名称通用化没有扩大已验证的 IDE 范围，仍限本页所列 GoLand 262 环境。
+
 ### 0.3.0 按行暂存与标签定位
 
 - 本地 SDK 编译及 15 项历史、14 项选区变换检查通过。

@@ -13,15 +13,22 @@ public final class QueuePluginUpdate {
         if (args[0].equals("inspect")) { existing.forEach(System.out::println); return; }
         Path archive = Path.of(args[2]).toRealPath();
         Path plugins = Path.of(args[3]).toAbsolutePath().normalize();
-        Path plugin = plugins.resolve("goland-diff-navigation");
-        if (!plugin.getParent().equals(plugins) || !archive.getFileName().toString().equals("goland-diff-navigation-0.3.0.zip"))
+        Path plugin = plugins.resolve("git-diff-review");
+        Path legacy = plugins.resolve("goland-diff-navigation");
+        if (!plugin.getParent().equals(plugins) || !legacy.getParent().equals(plugins)
+                || !archive.getFileName().toString().equals("git-diff-review-0.3.1.zip"))
             throw new IllegalArgumentException("Unexpected update target or archive");
         var commands = new ArrayList<ActionCommand>();
         for (var command : existing) {
-            boolean ownDelete = command instanceof DeleteCommand && command.toString().equals("delete[" + plugin + "]");
-            boolean ownArchive = command instanceof UnzipCommand unzip && Path.of(unzip.getSource()).getFileName().toString().matches("goland-diff-navigation-[0-9.]+\\.zip");
+            boolean ownDelete = command instanceof DeleteCommand && (command.toString().equals("delete[" + plugin + "]")
+                    || command.toString().equals("delete[" + legacy + "]"));
+            boolean ownArchive = command instanceof UnzipCommand unzip
+                    && Path.of(unzip.getSource()).getFileName().toString().matches("(?:git-diff-review|goland-diff-navigation)-[0-9.]+\\.zip")
+                    && command.toString().equals("unzip[" + unzip.getSource() + "," + plugins + ",null]");
             if (!ownDelete && !ownArchive) commands.add(command);
         }
+        // The ID changed intentionally. Remove both identities before installing the renamed plugin.
+        commands.add(new DeleteCommand(legacy));
         commands.add(new DeleteCommand(plugin));
         commands.add(new UnzipCommand(archive, plugins));
         Path temporary = script.resolveSibling("diffnav-action.script.tmp");
@@ -34,11 +41,12 @@ public final class QueuePluginUpdate {
         reread.forEach(System.out::println);
         if (args[0].equals("simulate")) {
             for (var command : reread) command.execute(FileSystems.getDefault());
+            if (Files.exists(legacy)) throw new IllegalStateException("Legacy plugin was not removed");
             try (var files = Files.list(plugin.resolve("lib"))) {
                 var installed = files.map(path -> path.getFileName().toString()).toList();
-                if (!installed.equals(List.of("goland-diff-navigation-0.3.0.jar"))) throw new IllegalStateException(installed.toString());
+                if (!installed.equals(List.of("git-diff-review-0.3.1.jar"))) throw new IllegalStateException(installed.toString());
             }
-            System.out.println("Verified deferred update: only version 0.3.0 remains");
+            System.out.println("Verified deferred update: only version 0.3.1 remains");
         }
     }
 }

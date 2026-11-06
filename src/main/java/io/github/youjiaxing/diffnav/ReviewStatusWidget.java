@@ -9,7 +9,7 @@ import com.intellij.openapi.wm.StatusBar;
 import com.intellij.openapi.wm.StatusBarWidget;
 
 public final class ReviewStatusWidget implements StatusBarWidget, StatusBarWidget.TextPresentation {
-    static final String ID = "GoLandDiffReview";
+    static final String ID = "GitDiffReview";
     private final Project project;
     private StatusBar status;
     ReviewStatusWidget(Project project) { this.project = project; }
