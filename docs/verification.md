@@ -4,6 +4,20 @@
 
 ## 已完成
 
+### 0.3.2 新增文件审阅与提交树定位
+
+- 修复前，`build/sandbox-added-red/smoke-report.txt` 记录原生声明跳转从未跟踪 A 的单栏 Diff 打开 B 源码，以及单选多文件目录／单文件目录后未定位到目标文件的三项失败。
+- 新增项目级 `openNewFilesInDiff` 偏好，默认开启，涵盖未跟踪、全部暂存和部分暂存的新文件。关闭后的源码导航保留会话；应用设置仍按既有规则清空会话。新增 XML 缺字段默认值及显式 false 序列化往返检查。
+- 提交树按实际选中路径数判断多选，并以直接选中的文件节点判断是否已定位；不将目录后代当成用户多选或精确选中文件。
+- 补齐原生新增文件单栏 Diff 的会话、位置、版本校验、导航与历史；单栏 INDEX 的声明解析仍限与本地内容相同的情形。目标位置有歧义时仍回退源码。
+- 用户指出 smoke IDE 的 `Write-unsafe context` 日志后，确认旧测试通过数仅代表功能断言。测试驱动改用 IDE 写安全事务；正式导航的 Back/Forward、EditSource 监听器也改为退出动作前置回调后执行，避免打开编辑器时在禁止派发 AWT 事件的回调内泵事件；延迟导航失败仍回退原生动作。
+- 测试插件新增最终日志检查，出现 ERROR／SEVERE 不得报告完整通过；测试插件不进入正式安装包。
+- 最终独立实例 `build/sandbox-added-v032-final-safe/smoke-report.txt`：`PASS 106 integration checks`；对应 `log/idea.log` 的 ERROR／SEVERE 计数为 0。包括原生单栏未跟踪 A→B、单双栏互跳、INDEX 新增文件声明解析、两种目标范围、三种新增状态的开关行为、暂存／完整取消暂存后的 Back、真正目录多选保护和精确文件定位。
+- 本地 SDK 构建通过：15 项历史、14 项选区变换、20 项真实 Git 事务检查。正式 0.3.2 ZIP 的 ID、版本、结构及不含 smoke/test 类已核对。
+- 测试驱动仅在独立 sandbox 使用本机 SDK 的 `TransactionGuardImpl.wrapLaterInvocation`，进入包装前在 EDT 检查实际模态状态、项目生命周期及重入；包装恢复写安全上下文，tick 保留写安全断言。该 SDK 内部测试依赖不进入正式包，未声称其他 SDK 可用。
+- 独立实现审查和日志问题定向复核已完成。安装迁移的 `-VerifyOnly` 隔离模拟通过，保留新旧安装目录迁移能力。
+- 日常 GoLand 的下次启动队列已更新为 0.3.2，旧版和原队列备份于 `build/install-v032/backup-20261106-122853`。独立测试实例已关闭，日常 IDE 未重启；0.3.2 实际加载仍待用户重启后确认。
+
 ### 0.3.1 项目与插件重命名
 
 - 本地项目目录、构建名、安装包、插件显示名和插件 ID 统一为 Git Diff Review / `git-diff-review`；Java 包和既有 action ID 保留。

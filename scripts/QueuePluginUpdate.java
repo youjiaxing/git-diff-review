@@ -16,7 +16,7 @@ public final class QueuePluginUpdate {
         Path plugin = plugins.resolve("git-diff-review");
         Path legacy = plugins.resolve("goland-diff-navigation");
         if (!plugin.getParent().equals(plugins) || !legacy.getParent().equals(plugins)
-                || !archive.getFileName().toString().equals("git-diff-review-0.3.1.zip"))
+                || !archive.getFileName().toString().equals("git-diff-review-0.3.2.zip"))
             throw new IllegalArgumentException("Unexpected update target or archive");
         var commands = new ArrayList<ActionCommand>();
         for (var command : existing) {
@@ -44,9 +44,9 @@ public final class QueuePluginUpdate {
             if (Files.exists(legacy)) throw new IllegalStateException("Legacy plugin was not removed");
             try (var files = Files.list(plugin.resolve("lib"))) {
                 var installed = files.map(path -> path.getFileName().toString()).toList();
-                if (!installed.equals(List.of("git-diff-review-0.3.1.jar"))) throw new IllegalStateException(installed.toString());
+                if (!installed.equals(List.of("git-diff-review-0.3.2.jar"))) throw new IllegalStateException(installed.toString());
             }
-            System.out.println("Verified deferred update: only version 0.3.1 remains");
+            System.out.println("Verified deferred update: only version 0.3.2 remains");
         }
     }
 }

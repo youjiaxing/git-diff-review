@@ -7,29 +7,48 @@ import com.intellij.openapi.actionSystem.AnActionResult;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.actionSystem.ex.AnActionListener;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
+import java.util.function.BooleanSupplier;
 
 /** Also handle the IDE's existing Back/Forward toolbar buttons when available. */
 public final class ReviewActionListener implements AnActionListener {
     private static final Key<Boolean> OWN_SKIP = Key.create("diffnav.own.skip");
     private static final Key<Boolean> PREVIOUS_SKIP = Key.create("diffnav.previous.skip");
+    private static final Key<Runnable> DEFERRED = Key.create("diffnav.deferred.action");
+    private static final Key<Boolean> NATIVE_FALLBACK = Key.create("diffnav.native.fallback");
     @Override public void beforeActionPerformed(AnAction action, AnActionEvent event) {
+        if (Boolean.TRUE.equals(event.getPresentation().getClientProperty(NATIVE_FALLBACK))) return;
         var project = event.getProject();
         if (project == null) return;
         String id = ActionManager.getInstance().getId(action);
         int direction = "Back".equals(id) ? -1 : "Forward".equals(id) ? 1 : 0;
-        boolean consumed = direction != 0 && project.getService(StageNavigationService.class).travel(event.getDataContext(), direction);
-        if ("EditSource".equals(id)) consumed = UsageNavigation.navigate(project, event.getDataContext());
-        if (consumed) {
+        var service = project.getService(StageNavigationService.class);
+        var context = event.getDataContext();
+        BooleanSupplier navigate = direction != 0 && service.prepareTravel(context, direction) ? () -> service.travel(context, direction)
+                : "EditSource".equals(id) && UsageNavigation.canNavigate(project, context) ? () -> UsageNavigation.navigate(project, context) : null;
+        if (navigate != null) {
             event.getPresentation().putClientProperty(PREVIOUS_SKIP, event.getPresentation().getClientProperty(ActionUtil.SKIP_ACTION_EXECUTION));
             event.getPresentation().putClientProperty(OWN_SKIP, true);
             event.getPresentation().putClientProperty(ActionUtil.SKIP_ACTION_EXECUTION, true);
+            // Action callbacks prohibit nested AWT dispatch; opening an editor can pump events.
+            event.getPresentation().putClientProperty(DEFERRED, () -> {
+                if (project.isDisposed() || navigate.getAsBoolean()) return;
+                var fallback = AnActionEvent.createEvent(action, context, event.getPresentation().clone(),
+                        event.getPlace(), event.getUiKind(), event.getInputEvent());
+                fallback.getPresentation().putClientProperty(NATIVE_FALLBACK, true);
+                ActionUtil.invokeAction(action, fallback, null);
+            });
         }
     }
     @Override public void afterActionPerformed(AnAction action, AnActionEvent event, AnActionResult result) {
         if (Boolean.TRUE.equals(event.getPresentation().getClientProperty(OWN_SKIP))) {
+            Runnable navigate = event.getPresentation().getClientProperty(DEFERRED);
             event.getPresentation().putClientProperty(ActionUtil.SKIP_ACTION_EXECUTION, event.getPresentation().getClientProperty(PREVIOUS_SKIP));
             event.getPresentation().putClientProperty(OWN_SKIP, null);
             event.getPresentation().putClientProperty(PREVIOUS_SKIP, null);
+            event.getPresentation().putClientProperty(DEFERRED, null);
+            if (navigate != null) ApplicationManager.getApplication().invokeLater(navigate, ModalityState.nonModal());
         }
     }
 }

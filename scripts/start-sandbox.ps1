@@ -25,7 +25,7 @@ foreach ($sandboxPlugin in @('goland-diff-navigation', 'git-diff-review')) {
     }
 }
 New-Item -ItemType Directory -Path $fixture,$options,$pluginLib,$testLib -Force | Out-Null
-Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.1.jar" -Destination $pluginLib
+Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.2.jar" -Destination $pluginLib
 $cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$root\build\local\classes"
 $testClasses = Join-Path $sandbox 'smoke-classes'
 $sources = @(Get-ChildItem -LiteralPath "$root\src\smoke\java" -Filter '*.java' -Recurse | ForEach-Object FullName)
@@ -36,6 +36,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Sandbox test packaging failed.' }
 Set-Content -LiteralPath "$options\git.xml" -Encoding utf8 -Value '<application><component name="Git.Application.Settings"><option name="STAGING_AREA_ENABLED" value="true"/></component></application>'
 Set-Content -LiteralPath "$options\vcs.xml" -Encoding utf8 -Value '<application><component name="VcsEditorTab.Settings"><option name="openInNewWindow" value="false"/></component></application>'
 if (!(Test-Path -LiteralPath "$fixture\.git")) {
+New-Item -ItemType Directory -Path "$fixture\added", "$fixture\single" -Force | Out-Null
+Set-Content -LiteralPath "$fixture\added\existing.go" -Encoding utf8 -Value "package added`n`nfunc Existing() int { return 1 }"
 Set-Content -LiteralPath "$fixture\go.mod" -Encoding utf8 -Value "module example.com/diffnavfixture`n`ngo 1.21.0"
 Set-Content -LiteralPath "$fixture\main.go" -Encoding utf8 -Value "package main`n`nfunc main() { _ = B() }"
 Set-Content -LiteralPath "$fixture\b.go" -Encoding utf8 -Value "package main`n`nfunc B() int { return C() }"
@@ -59,6 +61,15 @@ Set-Content -LiteralPath "$fixture\partial.go" -Encoding utf8 -Value "package ma
 Set-Content -LiteralPath "$fixture\lines.txt" -Encoding utf8 -Value "head`none`ntwo`nthree`nanchor`ntail"
 Set-Content -LiteralPath "$fixture\replace.txt" -Encoding utf8 -Value "newOneLong`nnewTwoLong`ntail"
 [IO.File]::WriteAllText((Join-Path $fixture 'new-no-eol.txt'), 'newOnly', [Text.UTF8Encoding]::new($false))
+Set-Content -LiteralPath "$fixture\added\existing.go" -Encoding utf8 -Value "package added`n`nfunc Existing() int { return AddedB() + 1 }"
+Set-Content -LiteralPath "$fixture\added\a.go" -Encoding utf8 -Value "package added`n`nfunc AddedA() int { return AddedB() + AddedStaged() + AddedPartial() }"
+Set-Content -LiteralPath "$fixture\added\b.go" -Encoding utf8 -Value "package added`n`nfunc AddedB() int { return Existing() }"
+Set-Content -LiteralPath "$fixture\added\staged.go" -Encoding utf8 -Value "package added`n`nfunc AddedStaged() int { return AddedB() }"
+Set-Content -LiteralPath "$fixture\added\partial_added.go" -Encoding utf8 -Value "package added`n`nfunc AddedPartial() int { return AddedB() }"
+& git -C $fixture add added/staged.go added/partial_added.go
+if ($LASTEXITCODE -ne 0) { throw 'Added-file staging fixture failed.' }
+Set-Content -LiteralPath "$fixture\added\partial_added.go" -Encoding utf8 -Value "package added`n`n// local-only added file edit`nfunc AddedPartial() int { return AddedB() }"
+Set-Content -LiteralPath "$fixture\single\only.go" -Encoding utf8 -Value "package single`n`nfunc Only() {}"
 Remove-Item -LiteralPath (Join-Path $fixture 'deleted.txt')
 }
 $vmOptions = Join-Path $sandbox 'sandbox.vmoptions'

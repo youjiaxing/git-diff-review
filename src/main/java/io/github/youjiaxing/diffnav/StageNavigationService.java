@@ -8,7 +8,6 @@ import com.intellij.diff.requests.DiffRequest;
 import com.intellij.diff.tools.util.DiffDataKeys;
 import com.intellij.diff.tools.util.base.DiffViewerBase;
 import com.intellij.diff.tools.util.base.DiffViewerListener;
-import com.intellij.diff.tools.util.side.TwosideTextDiffViewer;
 import com.intellij.diff.util.DiffUtil;
 import com.intellij.diff.util.Side;
 import com.intellij.openapi.Disposable;
@@ -39,7 +38,6 @@ import git4idea.index.ui.GitFileStatusNode;
 import git4idea.index.ui.GitStageDiffPreviewHandler;
 import git4idea.index.ui.GitStageDiffRequestProcessor;
 import git4idea.index.ui.NodeKind;
-import git4idea.index.vfs.GitIndexVirtualFile;
 import java.awt.Component;
 import java.awt.KeyboardFocusManager;
 import java.lang.ref.WeakReference;
@@ -208,6 +206,11 @@ public final class StageNavigationService implements Disposable {
             reason(scope == NavigationSettings.TargetScope.STAGED_ONLY ? "目标没有可用的已暂存 Diff，打开源码" : "目标没有可用的暂存区 Diff，打开源码");
             return openSource(review, from, to, flags.getRequestFocus(), commit);
         }
+        var node = (GitFileStatusNode) target.getUserObject();
+        if (!NavigationSettings.get(project).getState().openNewFilesInDiff && isNewFile(node)) {
+            reason("新增文件按设置打开源码，审阅会话保留");
+            return openSource(review, from, to, flags.getRequestFocus(), commit);
+        }
         to.kind = kind(target);
         return start(review, target, from, to, flags.getRequestFocus(), commit);
     }
@@ -288,8 +291,9 @@ public final class StageNavigationService implements Disposable {
     }
 
     static void viewerCreated(FrameDiffTool.DiffViewer viewer, DiffContext context, DiffRequest request) {
-        if ("Stage".equals(context.getUserData(com.intellij.diff.util.DiffUserDataKeys.PLACE)) && viewer instanceof TwosideTextDiffViewer two) {
-            for (Editor editor : two.getEditors()) editor.putUserData(STAGE_EDITOR, true);
+        StageDiffView view = StageDiffView.of(viewer);
+        if ("Stage".equals(context.getUserData(com.intellij.diff.util.DiffUserDataKeys.PLACE)) && view != null) {
+            view.markStagingEditors();
         }
         StageNavigationService owner = context.getUserData(OWNER);
         if (owner == null || !(viewer instanceof DiffViewerBase base)) return;
@@ -304,11 +308,12 @@ public final class StageNavigationService implements Disposable {
         Pending p = pending;
         if (p == null || p.session.stage.isDisposed() || viewer.isDisposed() || p.session.stage.getActiveViewer() != viewer
                 || !Objects.equals(p.session.stage.getCurrentChange(), p.wrapper) || !matchesActiveRequest(p.session.stage)) return;
-        if (!(viewer instanceof TwosideTextDiffViewer two)) { fallback(p, "目标视图不支持双栏定位，打开源码"); return; }
-        Editor editor = two.getEditor(p.to.side);
+        StageDiffView view = StageDiffView.current(p.session.stage);
+        Editor editor = view == null ? null : view.editor(p.to.side);
+        if (editor == null) { fallback(p, "目标视图没有对应版本，打开源码"); return; }
         int offset = p.to.position.resolve(editor.getDocument());
         if (offset < 0) { fallback(p, "目标版本或位置已变化，安全回退到源码"); return; }
-        two.scrollToLine(p.to.side, editor.getDocument().getLineNumber(offset));
+        view.scrollToLine(p.to.side, editor.getDocument().getLineNumber(offset));
         editor.getCaretModel().moveToOffset(offset);
         DiffUtil.scrollToCaret(editor, false);
         boolean focus = focusAllowed(p);
@@ -323,7 +328,7 @@ public final class StageNavigationService implements Disposable {
         p.to.close();
         p.commit.accept(p.from, arrived);
         active = p.session;
-        reason(kind(p.wrapper) == NodeKind.STAGED ? "已进入 HEAD ↔ INDEX" : "已进入 INDEX ↔ 本地");
+        reason(kind(p.wrapper) == NodeKind.STAGED ? "已进入 HEAD ↔ INDEX" : kind(p.wrapper) == NodeKind.UNTRACKED ? "已进入空版本 ↔ 本地新增文件" : "已进入 INDEX ↔ 本地");
     }
 
     private boolean focusAllowed(Pending p) {
@@ -396,6 +401,11 @@ public final class StageNavigationService implements Disposable {
         return start(review, target, from, to, true, commit);
     }
 
+    boolean prepareTravel(DataContext context, int direction) {
+        cancelPending();
+        return canTravel(context, direction);
+    }
+
     private Location snapshot(ReviewSession review, DataContext context) {
         if (processor(context) == review.stage || review.preview.equals(selectedFile())) return snapshotDiff(review.stage);
         Editor editor = FileEditorManager.getInstance(project).getSelectedTextEditor();
@@ -405,12 +415,13 @@ public final class StageNavigationService implements Disposable {
     }
 
     private static Location snapshotDiff(GitStageDiffRequestProcessor stage) {
-        if (!matchesActiveRequest(stage) || !(stage.getActiveViewer() instanceof TwosideTextDiffViewer two)) return null;
+        StageDiffView view = StageDiffView.current(stage);
+        if (view == null) return null;
         var node = (GitFileStatusNode) stage.getCurrentChange().getUserObject();
         VirtualFile file = node.getFilePath().getVirtualFile();
         if (file == null) return null;
-        Editor editor = two.getCurrentEditor();
-        return new Location(file, node.getKind(), editor == two.getEditor1() ? Side.LEFT : Side.RIGHT,
+        Editor editor = view.currentEditor();
+        return new Location(file, node.getKind(), view.side(editor),
                 NavigationPosition.capture(editor.getDocument(), editor.getCaretModel().getOffset()));
     }
 
@@ -427,17 +438,16 @@ public final class StageNavigationService implements Disposable {
     }
 
     private static NodeKind kind(Wrapper wrapper) { return ((GitFileStatusNode) wrapper.getUserObject()).getKind(); }
-    private static boolean supported(FrameDiffTool.DiffViewer viewer) { return viewer instanceof TwosideTextDiffViewer; }
+    private static boolean isNewFile(GitFileStatusNode node) {
+        var status = node.getStatus();
+        return !status.isConflicted() && (status.isUntracked() || status.getIndex() == 'A' && status.getOrigPath() == null);
+    }
+    private static boolean supported(FrameDiffTool.DiffViewer viewer) { return StageDiffView.of(viewer) != null; }
     private static boolean selectionContainsTarget(Pending p) {
         return !p.session.stage.isDisposed() && p.session.stage.getStageTree().selectedStatusNodes().contains(p.wrapper.getUserObject());
     }
     private static boolean matchesActiveRequest(GitStageDiffRequestProcessor stage) {
-        if (stage.isDisposed() || !(stage.getActiveViewer() instanceof TwosideTextDiffViewer two) || two.hasPendingRediff()
-                || stage.getCurrentChange() == null || !(stage.getCurrentChange().getUserObject() instanceof GitFileStatusNode node)) return false;
-        VirtualFile file = FileDocumentManager.getInstance().getFile(two.getEditor2().getDocument());
-        boolean index = file instanceof GitIndexVirtualFile;
-        VirtualFile local = index ? ((GitIndexVirtualFile) file).getFilePath().getVirtualFile() : file;
-        return local != null && local.equals(node.getFilePath().getVirtualFile()) && index == (node.getKind() == NodeKind.STAGED);
+        return StageDiffView.current(stage) != null;
     }
     private VirtualFile previewFile(GitStageDiffRequestProcessor stage) {
         for (var editor : FileEditorManager.getInstance(project).getAllEditors()) {

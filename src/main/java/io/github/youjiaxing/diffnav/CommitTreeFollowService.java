@@ -58,7 +58,7 @@ public final class CommitTreeFollowService implements Disposable {
         if (panel == null || !panel.isShowing() || !(panel.getTree() instanceof GitStageTree tree) || !tree.isShowing()) return;
         Binding binding = bindings.computeIfAbsent(tree, Binding::new);
         if (newIntent) binding.manual = false;
-        if (binding.manual || tree.getSelectionCount() > 1 || tree.selectedStatusNodes().take(2).size() > 1) return;
+        if (binding.manual || tree.getSelectionCount() > 1) return;
         if (project.getService(StageNavigationService.class).isNavigating(tree)) return;
         var editorWindow = FileEditorManagerEx.getInstanceEx(project).getCurrentWindow();
         if (editorWindow == null) return;
@@ -72,19 +72,18 @@ public final class CommitTreeFollowService implements Disposable {
                 if (stage.getStageTree() != tree || stage.getCurrentChange() == null
                         || !(stage.getCurrentChange().getUserObject() instanceof GitFileStatusNode node)) return;
                 if (stage.getActiveViewer() instanceof com.intellij.diff.tools.util.base.DiffViewerBase base && base.hasPendingRediff()) return;
-                if (stage.getActiveViewer() instanceof com.intellij.diff.tools.util.side.TwosideTextDiffViewer two) {
-                    var right = FileDocumentManager.getInstance().getFile(two.getEditor2().getDocument());
-                    String actual = right instanceof git4idea.index.vfs.GitIndexVirtualFile index ? index.getFilePath().getPath() : right == null ? null : right.getPath();
-                    if (actual == null || !same(node, actual)) return;
-                }
+                if (StageDiffView.of(stage.getActiveViewer()) != null && StageDiffView.current(stage) == null) return;
                 path = node.getFilePath().getPath(); required = node.getKind(); break;
             }
         }
         if (required == null && !file.isInLocalFileSystem()) return;
-        if (required == null && tree.selectedStatusNodes().find(node -> same(node, filePath(editorWindow.getSelectedFile()))) != null) return;
         if (tree.isModelUpdateInProgress()) {
             tree.invokeAfterRefresh(() -> follow(expected, false)); return;
         }
+        // A selected directory includes descendant status nodes, but is not an exact file selection.
+        var selection = tree.getSelectionPath();
+        if (required == null && selection != null && selection.getLastPathComponent() instanceof ChangesBrowserNode<?> selected
+                && selected.getUserObject() instanceof GitFileStatusNode node && same(node, path)) return;
         ChangesBrowserNode<?> best = null;
         var nodes = tree.getRoot().preorderEnumeration();
         while (nodes.hasMoreElements()) {
@@ -104,7 +103,6 @@ public final class CommitTreeFollowService implements Disposable {
 
     private static int rank(NodeKind kind) { return kind == NodeKind.UNSTAGED || kind == NodeKind.UNTRACKED ? 0 : kind == NodeKind.STAGED ? 1 : 2; }
     private static boolean same(GitFileStatusNode node, String path) { return com.intellij.openapi.util.io.FileUtil.pathsEqual(node.getFilePath().getPath(), path); }
-    private static String filePath(VirtualFile file) { return file == null ? "" : file.getPath(); }
     private final class Binding {
         final GitStageTree tree;
         int own;

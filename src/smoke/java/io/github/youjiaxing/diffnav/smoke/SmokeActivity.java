@@ -33,13 +33,16 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
     private Path report;
     private GitStageDiffRequestProcessor stage;
     private EditorTabDiffPreview preview;
-    private int step;
+    private volatile int step;
     private int ticks;
     private int passed;
     private boolean busy;
+    private final java.util.concurrent.atomic.AtomicInteger scheduledTicks = new java.util.concurrent.atomic.AtomicInteger();
+    private int receivedTicks;
     private com.intellij.usages.UsageView usages;
     private com.intellij.usages.UsageInfo2UsageAdapter usage;
     private FeatureChecks features;
+    private AddedFileChecks addedFiles;
 
     @Override public void runActivity(Project project) {
         String output = System.getProperty("diffnav.smoke.report");
@@ -49,28 +52,55 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
         log("START " + project.getBasePath());
         var diagnostic = new Timer(10000, event -> {
             if (step == 99) { ((Timer) event.getSource()).stop(); return; }
-            log("DIAGNOSTIC step=" + step + " busy=" + busy + " modality=" + com.intellij.openapi.application.ModalityState.current());
+            log("DIAGNOSTIC step=" + step + " ticks=" + ticks + " scheduled=" + scheduledTicks.get() + " received=" + receivedTicks + " disposed=" + project.isDisposed() + " busy=" + busy + " modality=" + com.intellij.openapi.application.ModalityState.current());
+            log("MODALS " + java.util.Arrays.toString(com.intellij.openapi.application.impl.LaterInvocator.getCurrentModalEntities()));
         });
         diagnostic.start();
+        com.intellij.openapi.util.Disposer.register(project, () -> diagnostic.stop());
         DumbService.getInstance(project).runWhenSmart(() -> {
-            var timer = new Timer(200, event -> {
-                if (busy) return;
-                if (com.intellij.openapi.application.ModalityState.current() != com.intellij.openapi.application.ModalityState.nonModal()) return;
-                busy = true;
-                javax.swing.SwingUtilities.invokeLater(() -> com.intellij.openapi.application.WriteIntentReadAction.run(() -> {
+            // Schedule independently of action/coroutine contexts captured by Swing timer events.
+            var ticker = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(task -> {
+                var thread = new Thread(task, "diffnav-smoke-ticker");
+                thread.setDaemon(true); return thread;
+            });
+            com.intellij.openapi.util.Disposer.register(project, () -> ticker.shutdownNow());
+            ticker.scheduleWithFixedDelay(() -> {
                 try {
+                if (step == 99) { ticker.shutdown(); return; }
+                scheduledTicks.incrementAndGet();
+                try (var ignored = com.intellij.concurrency.ThreadContext.resetThreadContext()) {
+                var guard = (com.intellij.openapi.application.TransactionGuardImpl) com.intellij.openapi.application.TransactionGuard.getInstance();
+                javax.swing.SwingUtilities.invokeLater(() -> {
+                receivedTicks++;
+                // Swing dispatch itself has no modality admission. Check the actual modal stack
+                // before entering the same write-safe wrapper used by the IDE's later queue.
+                if (busy || step == 99 || project.isDisposed()
+                        || com.intellij.openapi.application.impl.LaterInvocator.isInModalContext()) return;
+                guard.wrapLaterInvocation(() -> {
+                busy = true;
+                com.intellij.openapi.application.WriteIntentReadAction.run(() -> {
+                try {
+                    if (!com.intellij.openapi.application.TransactionGuard.getInstance().isWritingAllowed())
+                        throw new AssertionError("Smoke actions require an IDE write-safe context");
                     if (++ticks > 600) throw new AssertionError("Timed out at step " + step);
                     tick();
-                    if (step == 99) ((Timer) event.getSource()).stop();
+                    if (step == 99) ticker.shutdown();
                 } catch (Throwable error) {
                     log("FAIL step " + step + ": " + error);
                     for (var frame : error.getStackTrace()) log("  " + frame);
-                    ((Timer) event.getSource()).stop();
+                    ticker.shutdown();
                     step = 99;
                 } finally { busy = false; }
-                }));
-            });
-            timer.start();
+                });
+                }, com.intellij.openapi.application.ModalityState.nonModal()).run();
+                });
+                }
+                } catch (Throwable failure) {
+                    log("FAIL scheduler: " + failure);
+                    for (var frame : failure.getStackTrace()) log("  " + frame);
+                    step = 99; ticker.shutdown();
+                }
+            }, 0, 200, java.util.concurrent.TimeUnit.MILLISECONDS);
         });
     }
 
@@ -338,6 +368,15 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
             step = 50;
         } else if (step == 50) {
             try { if (!features.tick()) return; } catch (Exception failure) { throw new RuntimeException(failure); }
+            addedFiles = new AddedFileChecks(project, stage, preview, this::check);
+            step = 51;
+        } else if (step == 51) {
+            if (!addedFiles.tick()) return;
+            try {
+                String ideLog = Files.readString(Path.of(com.intellij.openapi.application.PathManager.getLogPath(), "idea.log"));
+                check(!ideLog.contains("Write-unsafe context!") && ideLog.lines().noneMatch(line ->
+                        line.contains("SEVERE -") || line.contains(" ERROR -")), "native action smoke produces no platform ERROR/SEVERE logs");
+            } catch (java.io.IOException failure) { throw new RuntimeException(failure); }
             log("PASS " + passed + " integration checks");
             step = 99;
         }

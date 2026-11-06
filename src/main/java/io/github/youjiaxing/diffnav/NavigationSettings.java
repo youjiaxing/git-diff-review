@@ -18,6 +18,7 @@ public final class NavigationSettings implements PersistentStateComponent<Naviga
     public static final class Options {
         public boolean enabled = true;
         public boolean autoStart = true;
+        public boolean openNewFilesInDiff = true;
         public TargetScope targetScope = TargetScope.FOLLOW_TARGET;
     }
     private Options state = new Options();
