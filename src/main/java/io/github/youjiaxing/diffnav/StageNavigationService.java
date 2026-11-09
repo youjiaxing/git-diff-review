@@ -109,15 +109,24 @@ public final class StageNavigationService implements Disposable {
     }
     private void restoreParked(ReviewSession review) {
         Location to = review.parked; review.parked = null;
-        Wrapper wrapper = findTarget(review.stage, to.file, to.kind, NavigationSettings.TargetScope.FOLLOW_TARGET);
-        if (wrapper == null) { to.close(); return; }
+        // Returning to an existing preview is an explicit view choice, including a manual staged view.
+        Wrapper wrapper = findExactTarget(review.stage, to.file, to.kind);
+        if (wrapper == null) wrapper = findTarget(review.stage, to.file, null, NavigationSettings.get(project).getState().targetScope);
         Location current = review.history.current();
         Location from = current == null ? to.copy() : current.copy();
-        start(review, wrapper, from, to, false, (departed, arrived) -> {
+        BiConsumer<Location, Location> commit = (departed, arrived) -> {
             // An explicit return to the preview is a user transition; the background tree follow isn't.
             if (departed.samePlace(arrived) && departed.kind == arrived.kind) { departed.close(); arrived.close(); }
             else review.history.record(departed, arrived);
-        }, true);
+        };
+        if (wrapper == null) {
+            reason("原预览版本已不存在，返回原文件源码");
+            openSource(review, from, to, false, commit);
+        } else {
+            if (to.kind != kind(wrapper)) to.side = Side.RIGHT;
+            to.kind = kind(wrapper);
+            start(review, wrapper, from, to, false, commit, true);
+        }
     }
     public void setEnabled(boolean value) {
         NavigationSettings.get(project).getState().enabled = value;
@@ -158,7 +167,9 @@ public final class StageNavigationService implements Disposable {
         if (from == null) return;
         cancelPending();
         reason("本次打开普通源码，审阅会话保留");
-        openSource(review, from, from.copy(), true, review.history::record);
+        Location to = from.copy();
+        to.intent = ViewIntent.SOURCE;
+        openSource(review, from, to, true, review.history::record);
     }
 
     static GitStageDiffRequestProcessor processor(DataContext context) {
@@ -203,12 +214,13 @@ public final class StageNavigationService implements Disposable {
         Wrapper target = findTarget(review.stage, file, null, scope);
         BiConsumer<Location, Location> commit = review.history::record;
         if (target == null) {
-            reason(scope == NavigationSettings.TargetScope.STAGED_ONLY ? "目标没有可用的已暂存 Diff，打开源码" : "目标没有可用的暂存区 Diff，打开源码");
+            reason(scope == NavigationSettings.TargetScope.STAGED_ONLY ? "目标没有可用的已暂存 Diff，打开源码" : "目标没有可用的未暂存 Diff，打开源码");
             return openSource(review, from, to, flags.getRequestFocus(), commit);
         }
         var node = (GitFileStatusNode) target.getUserObject();
         if (!NavigationSettings.get(project).getState().openNewFilesInDiff && isNewFile(node)) {
             reason("新增文件按设置打开源码，审阅会话保留");
+            to.intent = ViewIntent.SOURCE;
             return openSource(review, from, to, flags.getRequestFocus(), commit);
         }
         to.kind = kind(target);
@@ -323,7 +335,7 @@ public final class StageNavigationService implements Disposable {
             if (window != null) window.setSelectedComposite(p.session.preview, focus);
             if (focus) IdeFocusManager.getInstance(project).requestFocus(editor.getContentComponent(), true);
         } finally { openingEditor = false; }
-        Location arrived = new Location(p.to.file, kind(p.wrapper), p.to.side, NavigationPosition.capture(editor.getDocument(), offset));
+        Location arrived = new Location(p.to.file, kind(p.wrapper), p.to.side, NavigationPosition.capture(editor.getDocument(), offset), p.to.intent);
         detachPending();
         p.to.close();
         p.commit.accept(p.from, arrived);
@@ -342,7 +354,7 @@ public final class StageNavigationService implements Disposable {
         boolean focus = focusAllowed(p);
         detachPending();
         reason(why);
-        if (p.passiveRestore) { p.from.close(); p.to.close(); return; }
+        if (p.passiveRestore && !selected(p.session)) { p.from.close(); p.to.close(); return; }
         openSource(p.session, p.from, p.to, focus, p.commit);
     }
 
@@ -358,7 +370,7 @@ public final class StageNavigationService implements Disposable {
         } finally { openingEditor = false; }
         to.close();
         if (editor == null) { from.close(); return false; }
-        Location arrived = new Location(to.file, null, Side.RIGHT, NavigationPosition.capture(editor.getDocument(), editor.getCaretModel().getOffset()));
+        Location arrived = new Location(to.file, null, Side.RIGHT, NavigationPosition.capture(editor.getDocument(), editor.getCaretModel().getOffset()), to.intent);
         commit.accept(from, arrived);
         active = review;
         if (offset < 0) reason("无法确认目标位置，已打开源码文件而未使用旧坐标");
@@ -390,13 +402,28 @@ public final class StageNavigationService implements Disposable {
         Location to = saved.copy();
         IdeDocumentHistory.getInstance(project).reallyExcludeCurrentCommandAsNavigation();
         BiConsumer<Location, Location> commit = (departed, arrived) -> review.history.commitTravel(direction, departed, arrived);
-        if (to.kind == null) return openSource(review, from, to, true, commit);
-        Wrapper target = findTarget(review.stage, to.file, to.kind, NavigationSettings.TargetScope.FOLLOW_TARGET);
-        if (target == null) target = findTarget(review.stage, to.file, null, NavigationSettings.TargetScope.FOLLOW_TARGET);
+        var options = NavigationSettings.get(project).getState();
+        boolean unstagedOnly = options.targetScope == NavigationSettings.TargetScope.FOLLOW_TARGET;
+        if (to.intent == ViewIntent.SOURCE || !unstagedOnly && to.kind == null) return openSource(review, from, to, true, commit);
+        Wrapper target;
+        if (unstagedOnly) {
+            target = findTarget(review.stage, to.file, null, options.targetScope);
+            if (target != null && to.intent != ViewIntent.MANUAL_DIFF && !options.openNewFilesInDiff
+                    && isNewFile((GitFileStatusNode) target.getUserObject())) {
+                to.intent = ViewIntent.SOURCE;
+                return openSource(review, from, to, true, commit);
+            }
+        } else {
+            // Explicit staged-only review retains its original version-aware history behavior.
+            target = findExactTarget(review.stage, to.file, to.kind);
+            if (target == null) target = findTarget(review.stage, to.file, null, NavigationSettings.TargetScope.FOLLOW_TARGET);
+            if (target == null) target = findTarget(review.stage, to.file, null, NavigationSettings.TargetScope.STAGED_ONLY);
+        }
         if (target == null) {
             reason("历史文件已无可用 Diff，打开源码并保留审阅路径");
             return openSource(review, from, to, true, commit);
         }
+        if (to.kind != kind(target)) to.side = Side.RIGHT;
         to.kind = kind(target);
         return start(review, target, from, to, true, commit);
     }
@@ -410,19 +437,25 @@ public final class StageNavigationService implements Disposable {
         if (processor(context) == review.stage || review.preview.equals(selectedFile())) return snapshotDiff(review.stage);
         Editor editor = FileEditorManager.getInstance(project).getSelectedTextEditor();
         VirtualFile file = editor == null ? null : FileDocumentManager.getInstance().getFile(editor.getDocument());
+        Location current = review.history.current();
+        ViewIntent intent = current != null && current.kind == null && current.file.equals(file) ? current.intent : ViewIntent.REVIEW;
         return file == null || !file.isInLocalFileSystem() ? null
-                : new Location(file, null, Side.RIGHT, NavigationPosition.capture(editor.getDocument(), editor.getCaretModel().getOffset()));
+                : new Location(file, null, Side.RIGHT, NavigationPosition.capture(editor.getDocument(), editor.getCaretModel().getOffset()), intent);
     }
 
-    private static Location snapshotDiff(GitStageDiffRequestProcessor stage) {
+    private Location snapshotDiff(GitStageDiffRequestProcessor stage) {
         StageDiffView view = StageDiffView.current(stage);
         if (view == null) return null;
         var node = (GitFileStatusNode) stage.getCurrentChange().getUserObject();
         VirtualFile file = node.getFilePath().getVirtualFile();
         if (file == null) return null;
         Editor editor = view.currentEditor();
+        ReviewSession review = sessions.get(stage);
+        Location current = review == null ? null : review.history.current();
+        ViewIntent intent = current != null && current.file.equals(file) && current.kind == node.getKind()
+                ? current.intent : ViewIntent.MANUAL_DIFF;
         return new Location(file, node.getKind(), view.side(editor),
-                NavigationPosition.capture(editor.getDocument(), editor.getCaretModel().getOffset()));
+                NavigationPosition.capture(editor.getDocument(), editor.getCaretModel().getOffset()), intent);
     }
 
     private static Wrapper findTarget(GitStageDiffRequestProcessor stage, VirtualFile file, NodeKind required, NavigationSettings.TargetScope scope) {
@@ -432,9 +465,15 @@ public final class StageNavigationService implements Disposable {
             NodeKind kind = node.getKind();
             if (required != null && kind != required) continue;
             if (scope != NavigationSettings.TargetScope.STAGED_ONLY && (kind == NodeKind.UNSTAGED || kind == NodeKind.UNTRACKED)) return wrapper;
-            if (kind == NodeKind.STAGED) best = wrapper;
+            if (scope == NavigationSettings.TargetScope.STAGED_ONLY && kind == NodeKind.STAGED) best = wrapper;
         }
         return best;
+    }
+
+    private static Wrapper findExactTarget(GitStageDiffRequestProcessor stage, VirtualFile file, NodeKind required) {
+        if (required == null) return null;
+        return findTarget(stage, file, required, required == NodeKind.STAGED
+                ? NavigationSettings.TargetScope.STAGED_ONLY : NavigationSettings.TargetScope.FOLLOW_TARGET);
     }
 
     private static NodeKind kind(Wrapper wrapper) { return ((GitFileStatusNode) wrapper.getUserObject()).getKind(); }
@@ -500,16 +539,21 @@ public final class StageNavigationService implements Disposable {
         }
         void close() { history.clear(); if (parked != null) { parked.close(); parked = null; } }
     }
+    private enum ViewIntent { REVIEW, MANUAL_DIFF, SOURCE }
     private static final class Location implements AutoCloseable {
         final VirtualFile file;
         NodeKind kind;
-        final Side side;
+        Side side;
         final NavigationPosition position;
+        ViewIntent intent;
         Location(VirtualFile file, NodeKind kind, Side side, NavigationPosition position) {
-            this.file = file; this.kind = kind; this.side = side; this.position = position;
+            this(file, kind, side, position, ViewIntent.REVIEW);
+        }
+        Location(VirtualFile file, NodeKind kind, Side side, NavigationPosition position, ViewIntent intent) {
+            this.file = file; this.kind = kind; this.side = side; this.position = position; this.intent = intent;
         }
         boolean samePlace(Location other) { return file.equals(other.file); }
-        Location copy() { return new Location(file, kind, side, position.copy()); }
+        Location copy() { return new Location(file, kind, side, position.copy(), intent); }
         @Override public void close() { position.close(); }
     }
     private static final class Pending {

@@ -43,6 +43,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
     private com.intellij.usages.UsageInfo2UsageAdapter usage;
     private FeatureChecks features;
     private AddedFileChecks addedFiles;
+    private UnstagedReviewChecks unstaged;
 
     @Override public void runActivity(Project project) {
         String output = System.getProperty("diffnav.smoke.report");
@@ -134,13 +135,17 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
                 if (editor instanceof DiffEditorViewerFileEditor diff
                         && diff.getEditorViewer() instanceof GitStageDiffRequestProcessor processor) stage = processor;
             }
-            if (!at("main.go", NodeKind.UNSTAGED)) return;
+            if (unstaged == null) {
+                if (!at("main.go", NodeKind.UNSTAGED)) return;
+                unstaged = new UnstagedReviewChecks(project, stage, preview, this::check);
+            }
+            if (!unstaged.tick()) return;
             check(FileEditorManager.getInstance(project).isFileOpen(preview.getPreviewFile()), "Commit preview is open");
             call("B()");
             step = 2;
         } else if (step == 2) {
-            if (!at("b.go", NodeKind.STAGED)) return;
-            check(right().getCaretModel().getLogicalPosition().line == 2, "native declaration to staged-only function B at line 3");
+            if (!at("b.go", NodeKind.UNSTAGED)) return;
+            check(right().getCaretModel().getLogicalPosition().line == 2, "native declaration to unstaged function B at line 3");
             check(localTabs() == 0, "native declaration creates no source tab");
             call("C()");
             step = 3;
@@ -150,7 +155,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
             action("DiffNavigation.Back");
             step = 4;
         } else if (step == 4) {
-            if (!at("b.go", NodeKind.STAGED)) return;
+            if (!at("b.go", NodeKind.UNSTAGED)) return;
             check(right().getCaretModel().getLogicalPosition().line == 2, "review Back restores B");
             action("DiffNavigation.Back");
             step = 5;
@@ -160,7 +165,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
             action("DiffNavigation.Forward");
             step = 6;
         } else if (step == 6) {
-            if (!at("b.go", NodeKind.STAGED)) return;
+            if (!at("b.go", NodeKind.UNSTAGED)) return;
             action("DiffNavigation.Forward");
             step = 7;
         } else if (step == 7) {
@@ -185,7 +190,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
                 throw new AssertionError("review session lost after unchanged source: expected B staging Diff, got ordinary B source; "
                         + project.getService(io.github.youjiaxing.diffnav.StageNavigationService.class).getLastReason());
             }
-            if (!at("b.go", NodeKind.STAGED) || normal != null) return;
+            if (!at("b.go", NodeKind.UNSTAGED) || normal != null) return;
             check(localTabs() == 1, "review navigation through unchanged source returns to staging Diff");
             action("Back");
             step = 20;
@@ -206,7 +211,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
             action("DiffNavigation.Forward");
             step = 23;
         } else if (step == 23) {
-            if (!at("b.go", NodeKind.STAGED) || FileEditorManager.getInstance(project).getSelectedTextEditor() != null) return;
+            if (!at("b.go", NodeKind.UNSTAGED) || FileEditorManager.getInstance(project).getSelectedTextEditor() != null) return;
             check(true, "mixed Forward returns to Diff");
             var partial = GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(stage.getStageTree())
                     .find(w -> w.getFilePath().getName().equals("partial.go")
@@ -230,13 +235,13 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
                             document.createRangeMarker(document.getText().indexOf("B()"), document.getText().indexOf("B()")), null), ctx);
             step = 11;
         } else if (step == 11) {
-            if (!at("b.go", NodeKind.STAGED)) return;
+            if (!at("b.go", NodeKind.UNSTAGED)) return;
             action("DiffNavigation.Back");
             step = 12;
         } else if (step == 12) {
-            if (!at("partial.go", NodeKind.STAGED)) return;
-            check(right().getCaretModel().getLogicalPosition().line == 2, "Back restores INDEX coordinates in partially staged file");
-            check(!right().getDocument().getText().contains("worktree-only"), "Back preserves staged version");
+            if (!at("partial.go", NodeKind.UNSTAGED)) return;
+            check(right().getCaretModel().getLogicalPosition().line == 3, "default Back maps INDEX origin to current unstaged coordinates");
+            check(right().getDocument().getText().contains("worktree-only"), "default Back uses unstaged version even after manual INDEX origin");
             check(localTabs() == 1, "existing ordinary source tabs are preserved");
             navigate("clean.go", "Clean()");
             step = 24;
@@ -342,7 +347,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
             navigate("b.go", "B()");
             step = 36;
         } else if (step == 36) {
-            if (!at("b.go", NodeKind.STAGED)) return;
+            if (!at("b.go", NodeKind.UNSTAGED)) return;
             navigate("partial.go", "Partial()");
             step = 37;
         } else if (step == 37) {
@@ -357,13 +362,13 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
             action("DiffNavigation.Back");
             step = 39;
         } else if (step == 39) {
-            if (!at("b.go", NodeKind.STAGED)) return;
+            if (!at("b.go", NodeKind.UNSTAGED)) return;
             check(true, "changing current file staging group preserves review Back");
             action("DiffNavigation.Forward");
             step = 42;
         } else if (step == 42) {
-            if (!at("partial.go", NodeKind.STAGED)) return;
-            check(true, "Forward remembers latest staging group without clearing history");
+            if (!at("partial.go", NodeKind.UNSTAGED)) return;
+            check(right().getCaretModel().getLogicalPosition().line == 3, "Forward re-evaluates unstaged version instead of saved staged group");
             features = new FeatureChecks(project, stage, preview, this::check);
             step = 50;
         } else if (step == 50) {

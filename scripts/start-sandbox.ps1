@@ -25,7 +25,7 @@ foreach ($sandboxPlugin in @('goland-diff-navigation', 'git-diff-review')) {
     }
 }
 New-Item -ItemType Directory -Path $fixture,$options,$pluginLib,$testLib -Force | Out-Null
-Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.2.jar" -Destination $pluginLib
+Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.3.jar" -Destination $pluginLib
 $cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$root\build\local\classes"
 $testClasses = Join-Path $sandbox 'smoke-classes'
 $sources = @(Get-ChildItem -LiteralPath "$root\src\smoke\java" -Filter '*.java' -Recurse | ForEach-Object FullName)
@@ -36,7 +36,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Sandbox test packaging failed.' }
 Set-Content -LiteralPath "$options\git.xml" -Encoding utf8 -Value '<application><component name="Git.Application.Settings"><option name="STAGING_AREA_ENABLED" value="true"/></component></application>'
 Set-Content -LiteralPath "$options\vcs.xml" -Encoding utf8 -Value '<application><component name="VcsEditorTab.Settings"><option name="openInNewWindow" value="false"/></component></application>'
 if (!(Test-Path -LiteralPath "$fixture\.git")) {
-New-Item -ItemType Directory -Path "$fixture\added", "$fixture\single" -Force | Out-Null
+New-Item -ItemType Directory -Path "$fixture\added", "$fixture\single", "$fixture\policy" -Force | Out-Null
+Set-Content -LiteralPath "$fixture\policy\a.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyA() int { return PolicyB() + PolicyC() }"
+Set-Content -LiteralPath "$fixture\policy\b.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyB() int { return PolicyC() }"
+Set-Content -LiteralPath "$fixture\policy\c.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyC() int { return 1 }"
 Set-Content -LiteralPath "$fixture\added\existing.go" -Encoding utf8 -Value "package added`n`nfunc Existing() int { return 1 }"
 Set-Content -LiteralPath "$fixture\go.mod" -Encoding utf8 -Value "module example.com/diffnavfixture`n`ngo 1.21.0"
 Set-Content -LiteralPath "$fixture\main.go" -Encoding utf8 -Value "package main`n`nfunc main() { _ = B() }"
@@ -51,8 +54,13 @@ Set-Content -LiteralPath "$fixture\deleted.txt" -Encoding utf8 -Value "delOne`nd
 & git -C $fixture -c user.name='Diff Navigation Test' -c user.email='test@example.invalid' add .
 & git -C $fixture -c user.name='Diff Navigation Test' -c user.email='test@example.invalid' commit -qm 'test: sandbox baseline'
 if ($LASTEXITCODE -ne 0) { throw 'Fixture baseline failed.' }
+Set-Content -LiteralPath "$fixture\policy\a.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyA() int { return PolicyB() + PolicyC() + 1 }"
+Set-Content -LiteralPath "$fixture\policy\b.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyB() int { return PolicyC() + 1 }"
+& git -C $fixture add policy/b.go
+Set-Content -LiteralPath "$fixture\policy\c.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyC() int { return 2 }"
 Set-Content -LiteralPath "$fixture\b.go" -Encoding utf8 -Value "package main`n`nfunc B() int { return C() + 1 }"
 & git -C $fixture add b.go
+Set-Content -LiteralPath "$fixture\b.go" -Encoding utf8 -Value "package main`n`nfunc B() int { return C() + 2 }"
 Set-Content -LiteralPath "$fixture\c.go" -Encoding utf8 -Value "package main`n`nfunc C() int { return Clean() + 2 }"
 Set-Content -LiteralPath "$fixture\main.go" -Encoding utf8 -Value "package main`n`nfunc main() { _ = B() + 3 }"
 Set-Content -LiteralPath "$fixture\partial.go" -Encoding utf8 -Value "package main`n`nfunc Partial() int { return B() + 1 }"

@@ -66,15 +66,16 @@ final class FeatureChecks {
             GitStageDiffPreviewHandler.INSTANCE.selectChange(tree, staged);
             open("b.go"); open("partial.go"); step++;
         } else if (step == 7) {
-            if (!selected("partial.go", NodeKind.STAGED)) return false;
-            check.accept(source("partial.go"), "same file selection in staged group is preserved for source tab");
+            if (!selected("partial.go", NodeKind.UNSTAGED)) return false;
+            check.accept(source("partial.go"), "same file source tab follows unstaged group instead of old staged selection");
             var root = tree.getRoot();
             var paths = new java.util.ArrayList<javax.swing.tree.TreePath>();
             var nodes = root.preorderEnumeration();
             while (nodes.hasMoreElements()) {
                 var item = nodes.nextElement();
                 if (item instanceof javax.swing.tree.DefaultMutableTreeNode n && n.getUserObject() instanceof GitFileStatusNode status
-                        && status.getKind() == NodeKind.UNSTAGED && (status.getFilePath().getName().equals("main.go") || status.getFilePath().getName().equals("c.go"))) {
+                        && status.getKind() == NodeKind.UNSTAGED && (status.getFilePath().getPath().equals(project.getBasePath() + "/main.go")
+                        || status.getFilePath().getPath().equals(project.getBasePath() + "/c.go"))) {
                     paths.add(new javax.swing.tree.TreePath(n.getPath()));
                 }
             }
@@ -157,8 +158,8 @@ final class FeatureChecks {
             check.accept(true, "returning to review preview restores file parked before passive tree follow");
             invoke("DiffNavigation.Back", two().getEditor2()); step++;
         } else if (step == 26) {
-            if (!at("b.go", NodeKind.STAGED)) return false;
-            check.accept(true, "passive tree follow preserves original review Back history");
+            if (!at("b.go", NodeKind.UNSTAGED)) return false;
+            check.accept(true, "passive tree follow preserves Back history while default Back uses unstaged version");
             open("main.go"); step++;
         } else if (step == 27) {
             if (!selected("main.go", NodeKind.UNSTAGED)) return false;
@@ -237,13 +238,13 @@ final class FeatureChecks {
         var node = (GitFileStatusNode) stage.getCurrentChange().getUserObject();
         var file = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getFile(two.getEditor2().getDocument());
         String path = file instanceof git4idea.index.vfs.GitIndexVirtualFile index ? index.getFilePath().getPath() : file == null ? "" : file.getPath();
-        return node.getKind() == kind && node.getFilePath().getName().equals(name) && path.endsWith("/" + name);
+        return node.getKind() == kind && node.getFilePath().getPath().equals(project.getBasePath() + "/" + name) && path.equals(node.getFilePath().getPath());
     }
     private boolean atAny(String name, NodeKind kind) {
         if (!(stage.getActiveViewer() instanceof com.intellij.diff.tools.util.base.DiffViewerBase viewer) || viewer.hasPendingRediff()
                 || stage.getCurrentChange() == null) return false;
         var node = (GitFileStatusNode) stage.getCurrentChange().getUserObject();
-        return node.getKind() == kind && node.getFilePath().getName().equals(name);
+        return node.getKind() == kind && node.getFilePath().getPath().equals(project.getBasePath() + "/" + name);
     }
     private Editor activeEditor() {
         return stage.getActiveViewer() instanceof TwosideTextDiffViewer two ? two.getCurrentEditor()
@@ -251,11 +252,14 @@ final class FeatureChecks {
     }
     private TwosideTextDiffViewer two() { return (TwosideTextDiffViewer) stage.getActiveViewer(); }
     private com.intellij.openapi.vcs.changes.ChangeViewDiffRequestProcessor.Wrapper wrapper(String name, NodeKind kind) {
-        return GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(stage.getStageTree()).find(w -> w.getFilePath().getName().equals(name) && ((GitFileStatusNode) w.getUserObject()).getKind() == kind);
+        return GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(stage.getStageTree()).find(w -> w.getFilePath().getPath().equals(project.getBasePath() + "/" + name) && ((GitFileStatusNode) w.getUserObject()).getKind() == kind);
     }
     private void selectDiff(String name, NodeKind kind) {
         var target = wrapper(name, kind);
         if (target == null) throw new AssertionError("Missing fixture " + name + " " + kind);
+        var tree = stage.getStageTree();
+        tree.dispatchEvent(new java.awt.event.MouseEvent(tree, java.awt.event.MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(), 0, 2, 2, 1, false, java.awt.event.MouseEvent.BUTTON1));
         GitStageDiffPreviewHandler.INSTANCE.selectChange(stage.getStageTree(), target); stage.setCurrentChange(target); preview.openPreview(true);
     }
     private void open(String name) {
@@ -265,11 +269,11 @@ final class FeatureChecks {
     private boolean source(String name) {
         var editor = FileEditorManager.getInstance(project).getSelectedTextEditor();
         var file = editor == null ? null : com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getFile(editor.getDocument());
-        return file != null && file.getName().equals(name);
+        return file != null && file.getPath().equals(project.getBasePath() + "/" + name);
     }
     private boolean selected(String name, NodeKind kind) {
         var nodes = stage.getStageTree().selectedStatusNodes().toList();
-        return nodes.size() == 1 && nodes.getFirst().getFilePath().getName().equals(name) && nodes.getFirst().getKind() == kind;
+        return nodes.size() == 1 && nodes.getFirst().getFilePath().getPath().equals(project.getBasePath() + "/" + name) && nodes.getFirst().getKind() == kind;
     }
     private String index() throws Exception {
         return readIndex("lines.txt");

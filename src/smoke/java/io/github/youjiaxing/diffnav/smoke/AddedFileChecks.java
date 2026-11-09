@@ -123,9 +123,13 @@ final class AddedFileChecks {
             if (!at("a.go", NodeKind.UNTRACKED)) return waiting();
             call("AddedStaged()"); next();
         } else if (step == 19) {
+            if (!source("staged.go")) return waiting();
+            expect(true, "default review opens fully staged new target as source despite new-file preference on");
+            selectDiff("staged.go", NodeKind.STAGED); step = 190; ticks = 0;
+        } else if (step == 190) {
             if (!at("staged.go", NodeKind.STAGED)) return waiting();
             expect(stage.getActiveViewer() instanceof OnesideTextDiffViewer, "fully staged new target uses native one-sided INDEX Diff");
-            call("AddedB()"); next();
+            call("AddedB()"); step = 20; ticks = 0;
         } else if (step == 20) {
             if (!at("b.go", NodeKind.UNTRACKED)) return waiting();
             expect(true, "native declaration from identical one-sided INDEX resolves in working-tree PSI");
@@ -165,8 +169,9 @@ final class AddedFileChecks {
                     || stage.getStageTree().isModelUpdateInProgress() || ticks < 5) return waiting();
             action("DiffNavigation.Back"); next();
         } else if (step == 30) {
-            if (!at("a.go", NodeKind.STAGED)) return waiting();
-            expect(editor().getCaretModel().getOffset() == editor().getDocument().getText().indexOf("AddedB()"), "Back remaps formerly untracked source after staging");
+            if (!source("a.go")) return waiting();
+            var source = FileEditorManager.getInstance(project).getSelectedTextEditor();
+            expect(source.getCaretModel().getOffset() == source.getDocument().getText().indexOf("AddedB()"), "Back restores formerly untracked source after full staging without entering INDEX Diff");
             action("DiffNavigation.Forward"); next();
         } else if (step == 31) {
             if (!at("b.go", NodeKind.UNTRACKED)) return waiting();
@@ -233,7 +238,7 @@ final class AddedFileChecks {
         var tree = stage.getStageTree();
         if (tree.getSelectionCount() != 1) return false;
         var node = (ChangesBrowserNode<?>) tree.getSelectionPath().getLastPathComponent();
-        return node.getUserObject() instanceof GitFileStatusNode status && status.getFilePath().getName().equals(name);
+        return node.getUserObject() instanceof GitFileStatusNode status && status.getFilePath().getPath().equals(expectedPath(name));
     }
     private void open(String relative) {
         var file = LocalFileSystem.getInstance().findFileByPath(project.getBasePath() + "/" + relative);
@@ -242,12 +247,15 @@ final class AddedFileChecks {
     private boolean source(String name) {
         var editor = FileEditorManager.getInstance(project).getSelectedTextEditor();
         var file = editor == null ? null : FileDocumentManager.getInstance().getFile(editor.getDocument());
-        return file != null && file.getName().equals(name);
+        return file != null && file.getPath().equals(expectedPath(name));
     }
     private void selectDiff(String name, NodeKind kind) {
         var wrapper = GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(stage.getStageTree()).find(w ->
-                w.getFilePath().getName().equals(name) && ((GitFileStatusNode) w.getUserObject()).getKind() == kind);
+                w.getFilePath().getPath().equals(expectedPath(name)) && ((GitFileStatusNode) w.getUserObject()).getKind() == kind);
         if (wrapper == null) throw new AssertionError("Missing added fixture " + name + " " + kind);
+        var tree = stage.getStageTree();
+        tree.dispatchEvent(new java.awt.event.MouseEvent(tree, java.awt.event.MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(), 0, 2, 2, 1, false, java.awt.event.MouseEvent.BUTTON1));
         GitStageDiffPreviewHandler.INSTANCE.selectChange(stage.getStageTree(), wrapper);
         stage.setCurrentChange(wrapper); preview.openPreview(true);
     }
@@ -257,7 +265,7 @@ final class AddedFileChecks {
         var node = (GitFileStatusNode) stage.getCurrentChange().getUserObject();
         var file = FileDocumentManager.getInstance().getFile(editor().getDocument());
         String actual = file instanceof git4idea.index.vfs.GitIndexVirtualFile index ? index.getFilePath().getPath() : file == null ? "" : file.getPath();
-        return node.getKind() == kind && node.getFilePath().getName().equals(name) && actual.equals(node.getFilePath().getPath());
+        return node.getKind() == kind && node.getFilePath().getPath().equals(expectedPath(name)) && actual.equals(node.getFilePath().getPath());
     }
     private Editor editor() {
         return stage.getActiveViewer() instanceof TwosideTextDiffViewer two ? two.getCurrentEditor()
@@ -276,9 +284,12 @@ final class AddedFileChecks {
                 DataManager.getInstance().getDataContext((source == null ? editor() : source).getContentComponent()), "DiffNavSmoke", null, null);
     }
     private StageNavigationService service() { return project.getService(StageNavigationService.class); }
+    private String expectedPath(String name) {
+        return project.getBasePath() + "/" + (name.equals("only.go") ? "single/" : "added/") + name;
+    }
     private boolean has(String name, NodeKind kind) {
         return GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(stage.getStageTree()).find(w ->
-                w.getFilePath().getName().equals(name) && ((GitFileStatusNode) w.getUserObject()).getKind() == kind) != null;
+                w.getFilePath().getPath().equals(expectedPath(name)) && ((GitFileStatusNode) w.getUserObject()).getKind() == kind) != null;
     }
     private void git(String... arguments) {
         var command = new ArrayList<>(List.of("git", "-C", project.getBasePath()));

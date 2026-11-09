@@ -81,15 +81,18 @@ public final class CommitTreeFollowService implements Disposable {
             tree.invokeAfterRefresh(() -> follow(expected, false)); return;
         }
         // A selected directory includes descendant status nodes, but is not an exact file selection.
+        boolean unstagedOnly = NavigationSettings.get(project).getState().targetScope == NavigationSettings.TargetScope.FOLLOW_TARGET;
         var selection = tree.getSelectionPath();
         if (required == null && selection != null && selection.getLastPathComponent() instanceof ChangesBrowserNode<?> selected
-                && selected.getUserObject() instanceof GitFileStatusNode node && same(node, path)) return;
+                && selected.getUserObject() instanceof GitFileStatusNode node && same(node, path)
+                && (!unstagedOnly || isUnstaged(node.getKind()))) return;
         ChangesBrowserNode<?> best = null;
         var nodes = tree.getRoot().preorderEnumeration();
         while (nodes.hasMoreElements()) {
             Object item = nodes.nextElement();
             if (!(item instanceof ChangesBrowserNode<?> candidate) || !(candidate.getUserObject() instanceof GitFileStatusNode node)
                     || !same(node, path) || required != null && node.getKind() != required) continue;
+            if (required == null && unstagedOnly && !isUnstaged(node.getKind())) continue;
             if (best == null || rank(node.getKind()) < rank(((GitFileStatusNode) best.getUserObject()).getKind())) best = candidate;
         }
         if (best == null || expected != generation || binding.manual) return;
@@ -102,6 +105,7 @@ public final class CommitTreeFollowService implements Disposable {
     }
 
     private static int rank(NodeKind kind) { return kind == NodeKind.UNSTAGED || kind == NodeKind.UNTRACKED ? 0 : kind == NodeKind.STAGED ? 1 : 2; }
+    private static boolean isUnstaged(NodeKind kind) { return kind == NodeKind.UNSTAGED || kind == NodeKind.UNTRACKED; }
     private static boolean same(GitFileStatusNode node, String path) { return com.intellij.openapi.util.io.FileUtil.pathsEqual(node.getFilePath().getPath(), path); }
     private final class Binding {
         final GitStageTree tree;

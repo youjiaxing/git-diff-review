@@ -27,9 +27,10 @@ public final class NavigationConfigurable implements SearchableConfigurable {
         fields.add(enabled);
         fields.add(autoStart);
         fields.add(openNewFilesInDiff);
-        fields.add(new JLabel("包括未跟踪、全部暂存和部分暂存的新文件；关闭后打开源码并保留审阅路径。"));
+        fields.add(new JLabel("包括未跟踪和部分暂存的新文件；目标还须符合下方比较范围。关闭后打开源码并保留审阅路径。"));
         fields.add(new JLabel("导航目标的比较范围："));
         fields.add(scope);
+        fields.add(new JLabel("只审未暂存时：代码跳转与历史返回均跳过已暂存版本；普通源码标签也只定位未暂存项。"));
         fields.add(new JLabel("只审已暂存时：目标不在暂存版本或无法确认坐标，将打开源码。"));
         fields.add(new JLabel("审阅可经过未修改源码和用法结果；关闭所属 Diff 预览或暂停后结束。"));
         JPanel panel = new JPanel(new java.awt.BorderLayout());

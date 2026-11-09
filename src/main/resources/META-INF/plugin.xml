@@ -1,13 +1,15 @@
 <idea-plugin>
   <id>io.github.youjiaxing.git-diff-review</id>
   <name>Git Diff Review</name>
-  <version>0.3.2</version>
+  <version>0.3.3</version>
   <vendor url="https://github.com/youjiaxing">youjiaxing</vendor>
   <description><![CDATA[
     <p>Follow code navigation across Git Staging diffs, unchanged source and single usage results.
     Keep the Commit preview, staging controls and mixed source/diff Back/Forward history.</p>
     <p>Configure automatic review sessions and staged-only scope under Version Control.
     Pause review or inspect the latest navigation reason from the status bar.</p>
+    <p>Review unstaged changes by default. Fully staged targets open as source, and history
+    follows their current unstaged state without automatically returning to reviewed changes.</p>
     <p>Navigate through native one-sided diffs for new files. New-file targets open in Diff
     by default; a project preference can open them as source while keeping review history.</p>
     <p>Stage or unstage selected lines from a floating toolbar. Active source tabs locate
