@@ -32,9 +32,9 @@ foreach ($testClass in @('SelectedLinesTest', 'GitIndexTransactionTest')) {
     & "$JdkPath\bin\java.exe" -cp "$testClasses;$classes;$cp" "io.github.youjiaxing.diffnav.$testClass"
     if ($LASTEXITCODE -ne 0) { throw "$testClass failed." }
 }
-$jar = Join-Path $package 'git-diff-review-0.3.3.jar'
+$jar = Join-Path $package 'git-diff-review-0.3.4.jar'
 & "$JdkPath\bin\jar.exe" --create --file $jar -C $classes . -C "$root\src\main\resources" .
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed.' }
-$zip = Join-Path $output 'git-diff-review-0.3.3.zip'
+$zip = Join-Path $output 'git-diff-review-0.3.4.zip'
 Compress-Archive -LiteralPath (Join-Path $output 'git-diff-review') -DestinationPath $zip -Force
 Write-Output "Built for $($product.name) $($product.version) ($($product.buildNumber)): $zip"

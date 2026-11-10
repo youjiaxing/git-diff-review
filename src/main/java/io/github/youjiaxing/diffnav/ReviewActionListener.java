@@ -25,19 +25,20 @@ public final class ReviewActionListener implements AnActionListener {
         int direction = "Back".equals(id) ? -1 : "Forward".equals(id) ? 1 : 0;
         var service = project.getService(StageNavigationService.class);
         var context = event.getDataContext();
+        var compare = project.getService(SourceCompareService.class);
+        compare.cancel();
+        Runnable explicit = "Git.Stage.Compare.Local.Staged".equals(id)
+                ? compare.prepare(context, () -> nativeFallback(action, event)) : null;
         BooleanSupplier navigate = direction != 0 && service.prepareTravel(context, direction) ? () -> service.travel(context, direction)
                 : "EditSource".equals(id) && UsageNavigation.canNavigate(project, context) ? () -> UsageNavigation.navigate(project, context) : null;
-        if (navigate != null) {
+        if (explicit != null || navigate != null) {
             event.getPresentation().putClientProperty(PREVIOUS_SKIP, event.getPresentation().getClientProperty(ActionUtil.SKIP_ACTION_EXECUTION));
             event.getPresentation().putClientProperty(OWN_SKIP, true);
             event.getPresentation().putClientProperty(ActionUtil.SKIP_ACTION_EXECUTION, true);
             // Action callbacks prohibit nested AWT dispatch; opening an editor can pump events.
-            event.getPresentation().putClientProperty(DEFERRED, () -> {
+            event.getPresentation().putClientProperty(DEFERRED, explicit != null ? explicit : () -> {
                 if (project.isDisposed() || navigate.getAsBoolean()) return;
-                var fallback = AnActionEvent.createEvent(action, context, event.getPresentation().clone(),
-                        event.getPlace(), event.getUiKind(), event.getInputEvent());
-                fallback.getPresentation().putClientProperty(NATIVE_FALLBACK, true);
-                ActionUtil.invokeAction(action, fallback, null);
+                nativeFallback(action, event);
             });
         }
     }
@@ -50,5 +51,11 @@ public final class ReviewActionListener implements AnActionListener {
             event.getPresentation().putClientProperty(DEFERRED, null);
             if (navigate != null) ApplicationManager.getApplication().invokeLater(navigate, ModalityState.nonModal());
         }
+    }
+    private static void nativeFallback(AnAction action, AnActionEvent event) {
+        var fallback = AnActionEvent.createEvent(action, event.getDataContext(), event.getPresentation().clone(),
+                event.getPlace(), event.getUiKind(), event.getInputEvent());
+        fallback.getPresentation().putClientProperty(NATIVE_FALLBACK, true);
+        ActionUtil.invokeAction(action, fallback, null);
     }
 }

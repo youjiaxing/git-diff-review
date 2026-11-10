@@ -44,6 +44,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
     private FeatureChecks features;
     private AddedFileChecks addedFiles;
     private UnstagedReviewChecks unstaged;
+    private CompareMenuChecks compareMenu;
 
     @Override public void runActivity(Project project) {
         String output = System.getProperty("diffnav.smoke.report");
@@ -118,6 +119,8 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
                 if (ticks % 15 == 0) log("WAIT no Commit toolwindow; windows=" + java.util.Arrays.toString(ToolWindowManager.getInstance(project).getToolWindowIds()));
                 return;
             }
+            if (compareMenu == null) compareMenu = new CompareMenuChecks(project, this::check);
+            if (!compareMenu.tick()) return;
             window.show();
             var panel = find(window.getContentManager().getComponent(), GitStagePanel.class);
             if (panel == null) { if (ticks % 15 == 0) log("WAIT staging panel not initialized"); return; }

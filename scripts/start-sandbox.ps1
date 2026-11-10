@@ -25,7 +25,7 @@ foreach ($sandboxPlugin in @('goland-diff-navigation', 'git-diff-review')) {
     }
 }
 New-Item -ItemType Directory -Path $fixture,$options,$pluginLib,$testLib -Force | Out-Null
-Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.3.jar" -Destination $pluginLib
+Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.4.jar" -Destination $pluginLib
 $cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$root\build\local\classes"
 $testClasses = Join-Path $sandbox 'smoke-classes'
 $sources = @(Get-ChildItem -LiteralPath "$root\src\smoke\java" -Filter '*.java' -Recurse | ForEach-Object FullName)
@@ -36,7 +36,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Sandbox test packaging failed.' }
 Set-Content -LiteralPath "$options\git.xml" -Encoding utf8 -Value '<application><component name="Git.Application.Settings"><option name="STAGING_AREA_ENABLED" value="true"/></component></application>'
 Set-Content -LiteralPath "$options\vcs.xml" -Encoding utf8 -Value '<application><component name="VcsEditorTab.Settings"><option name="openInNewWindow" value="false"/></component></application>'
 if (!(Test-Path -LiteralPath "$fixture\.git")) {
-New-Item -ItemType Directory -Path "$fixture\added", "$fixture\single", "$fixture\policy" -Force | Out-Null
+New-Item -ItemType Directory -Path "$fixture\added", "$fixture\single", "$fixture\policy", "$fixture\menuA", "$fixture\menuB" -Force | Out-Null
+Set-Content -LiteralPath "$fixture\menuA\item.txt" -Encoding utf8 -Value "head`noldA"
+Set-Content -LiteralPath "$fixture\menuB\item.txt" -Encoding utf8 -Value "head`noldB"
+Set-Content -LiteralPath "$fixture\menu-rename-old.txt" -Encoding utf8 -Value "rename old`nanchor`ntail"
 Set-Content -LiteralPath "$fixture\policy\a.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyA() int { return PolicyB() + PolicyC() }"
 Set-Content -LiteralPath "$fixture\policy\b.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyB() int { return PolicyC() }"
 Set-Content -LiteralPath "$fixture\policy\c.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyC() int { return 1 }"
@@ -48,6 +51,7 @@ Set-Content -LiteralPath "$fixture\c.go" -Encoding utf8 -Value "package main`n`n
 Set-Content -LiteralPath "$fixture\clean.go" -Encoding utf8 -Value "package main`n`nfunc Clean() int { return 1 }`nfunc UnchangedCaller() int { return B() }"
 Set-Content -LiteralPath "$fixture\partial.go" -Encoding utf8 -Value "package main`n`nfunc Partial() int { return B() }"
 Set-Content -LiteralPath "$fixture\lines.txt" -Encoding utf8 -Value "head`nanchor`ntail"
+Set-Content -LiteralPath "$fixture\menu.txt" -Encoding utf8 -Value "head`nanchor`ntail"
 Set-Content -LiteralPath "$fixture\replace.txt" -Encoding utf8 -Value "oldOne`noldTwo`ntail"
 Set-Content -LiteralPath "$fixture\deleted.txt" -Encoding utf8 -Value "delOne`ndelTwo"
 & git -C $fixture init --initial-branch=main | Out-Null
@@ -67,6 +71,12 @@ Set-Content -LiteralPath "$fixture\partial.go" -Encoding utf8 -Value "package ma
 & git -C $fixture add partial.go
 Set-Content -LiteralPath "$fixture\partial.go" -Encoding utf8 -Value "package main`n`n// worktree-only`nfunc Partial() int { return B() + 1 }"
 Set-Content -LiteralPath "$fixture\lines.txt" -Encoding utf8 -Value "head`none`ntwo`nthree`nanchor`ntail"
+Set-Content -LiteralPath "$fixture\menu.txt" -Encoding utf8 -Value "head`nmenuOne`nmenuTwo`nanchor`ntail"
+Set-Content -LiteralPath "$fixture\menuA\item.txt" -Encoding utf8 -Value "head`nnewA"
+Set-Content -LiteralPath "$fixture\menuB\item.txt" -Encoding utf8 -Value "head`nnewB"
+Move-Item -LiteralPath "$fixture\menu-rename-old.txt" -Destination "$fixture\menu-renamed.txt"
+& git -C $fixture add -- menu-rename-old.txt menu-renamed.txt
+Set-Content -LiteralPath "$fixture\menu-renamed.txt" -Encoding utf8 -Value "rename old`nanchor`ntail`nlocal edit"
 Set-Content -LiteralPath "$fixture\replace.txt" -Encoding utf8 -Value "newOneLong`nnewTwoLong`ntail"
 [IO.File]::WriteAllText((Join-Path $fixture 'new-no-eol.txt'), 'newOnly', [Text.UTF8Encoding]::new($false))
 Set-Content -LiteralPath "$fixture\added\existing.go" -Encoding utf8 -Value "package added`n`nfunc Existing() int { return AddedB() + 1 }"

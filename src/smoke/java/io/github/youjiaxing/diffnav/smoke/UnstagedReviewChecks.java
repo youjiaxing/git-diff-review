@@ -59,7 +59,7 @@ final class UnstagedReviewChecks {
             case 2 -> {
                 if (ticks < 5) return false;
                 expect(!selected("b.go", NodeKind.STAGED), "source tab does not auto-select staged-only file");
-                expect(java.util.Objects.equals(sourceSelection, stage.getStageTree().getSelectionPath()),
+                expect(java.util.Objects.equals(String.valueOf(sourceSelection), String.valueOf(stage.getStageTree().getSelectionPath())),
                         "staged-only source tab preserves the previous Commit selection");
                 service().settingsChanged(); selectDiff("a.go", NodeKind.UNSTAGED); next();
             }

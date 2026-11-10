@@ -81,6 +81,7 @@ public final class StageNavigationService implements Disposable {
                     }
                     @Override public void selectionChanged(FileEditorManagerEvent event) {
                         if (openingEditor) return;
+                        if (project.getService(SourceCompareService.class).isPending()) return;
                         for (ReviewSession review : sessions.values()) {
                             if (review.preview.equals(event.getNewFile()) && review.parked != null && pending == null) {
                                 restoreParked(review);
@@ -95,7 +96,30 @@ public final class StageNavigationService implements Disposable {
     }
 
     public boolean isEnabled() { return NavigationSettings.get(project).getState().enabled; }
-    boolean isNavigating(git4idea.index.ui.GitStageTree tree) { return pending != null && pending.session.stage.getStageTree() == tree; }
+    boolean isNavigating(git4idea.index.ui.GitStageTree tree) {
+        return pending != null && pending.session.stage.getStageTree() == tree
+                || project.getService(SourceCompareService.class).isPending();
+    }
+    void beforeExplicitComparison(git4idea.index.ui.GitStageTree tree) {
+        cancelPending();
+        for (ReviewSession review : sessions.values()) if (review.stage.getStageTree() == tree && review.parked != null) {
+            review.parked.close(); review.parked = null;
+        }
+    }
+    void explicitComparisonOpened(GitStageDiffRequestProcessor stage, VirtualFile source, NavigationPosition position) {
+        ReviewSession review = sessions.get(stage);
+        if (review == null && NavigationSettings.get(project).getState().autoStart && !paused.containsKey(stage)) review = createSession(stage);
+        if (review == null) return;
+        Location arrived = snapshotDiff(stage);
+        if (arrived == null) return;
+        arrived.intent = ViewIntent.MANUAL_DIFF;
+        Location current = review.history.current();
+        // Keep an existing review path, even when the explicit source command starts elsewhere.
+        Location from = current == null ? new Location(source, null, Side.RIGHT, position.copy()) : current.copy();
+        review.history.record(from, arrived);
+        active = review;
+        reason("已从源码进入 INDEX ↔ 本地提交预览");
+    }
     void beforeAutomaticTreeSelection(git4idea.index.ui.GitStageTree tree) {
         for (ReviewSession review : sessions.values()) {
             if (review.stage.getStageTree() == tree && review.parked == null && !review.preview.equals(selectedFile())) review.parked = snapshotDiff(review.stage);
@@ -133,6 +157,7 @@ public final class StageNavigationService implements Disposable {
         settingsChanged();
     }
     public void settingsChanged() {
+        project.getService(SourceCompareService.class).cancel();
         cancelPending();
         sessions.values().forEach(ReviewSession::close);
         sessions.clear();

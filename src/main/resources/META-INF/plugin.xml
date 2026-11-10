@@ -1,7 +1,7 @@
 <idea-plugin>
   <id>io.github.youjiaxing.git-diff-review</id>
   <name>Git Diff Review</name>
-  <version>0.3.3</version>
+  <version>0.3.4</version>
   <vendor url="https://github.com/youjiaxing">youjiaxing</vendor>
   <description><![CDATA[
     <p>Follow code navigation across Git Staging diffs, unchanged source and single usage results.
@@ -14,6 +14,8 @@
     by default; a project preference can open them as source while keeping review history.</p>
     <p>Stage or unstage selected lines from a floating toolbar. Active source tabs locate
     matching files in the visible Commit tree while preserving manual multi-selection.</p>
+    <p>Compare with Staged from a source editor opens the Commit review preview for the
+    file's unstaged changes, including selected-line staging, with native comparison fallback.</p>
     <p>Targets IntelliJ platform build 262 with Git4Idea. Currently tested with GoLand 2026.2;
     compatibility with other JetBrains IDEs is not yet verified.</p>
   ]]></description>
