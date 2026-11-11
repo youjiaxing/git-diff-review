@@ -4,7 +4,7 @@
 
 ## 已完成
 
-### 0.3.7 GitHub 构建与正式版本自动发布
+### 0.3.7–0.3.9 GitHub 构建与正式版本自动发布
 
 - `gradle.properties` 的 `pluginVersion` 成为唯一版本来源。Gradle 注入描述符版本，本地打包生成版本化资源，安装脚本及安装队列验证 helper 读取同一版本；不再逐处替换硬编码版本。本地构建 15 项历史、19 项选区变换、24 项真实 Git 事务检查及 0.3.7 升级隔离模拟通过。
 - 发布脚本的 27 项检查覆盖真实临时 Git 历史和隔离 API 模拟：累计未发布变更、文档豁免、版本回退、版本／标签冲突、ZIP 及生产描述符、测试代码泄漏、原始摘要、完整草稿后公开、部分上传恢复、公开资产不覆盖、同 SHA 重跑及 Latest 最高版本重算；新增首次验证记录的原 SHA／artifact ID 绑定、产物变化拒绝及版本公开后的记录失效。
@@ -13,6 +13,11 @@
 - 使用该远端 ZIP 的 `build/sandbox-release-v037/smoke-report.txt` 为 `PASS 189 integration checks`，平台 ERROR／SEVERE 为 0。该结果仅属于本次安装产物验证，不代表未来每次云端 CI 都运行 IDE 或物理鼠标测试。
 - CI 发布以目标提交祖先中的成功正式版本为基线，PR／非 main 不公开发布，失败不公开不完整资产。同版本的公开标签与安装包不覆盖；已完成重跑核验原资产，草稿恢复使用原 attempt 的成功 build 与固定 artifact。构建 job 只读，发布 job 使用 `contents: write`，跨 run 下载使用 `actions: read`。不同正式版本独立处理，Latest 串行重新查询最高正式版本。
 - 本机 CLI 的 Actions 产物下载及 workflow_dispatch 返回 403；GitHub 连接应用能下载。首次发布因此通过主干中的隔离验证记录及门禁配置推送启动，仍复用上面的确切 SHA／ZIP／摘要，未引入新凭据或放宽来源检查。IDE 兼容性仍只实测 GoLand 262，Marketplace 保持暂缓，日常 IDE 未被重启。
+- 首次开放门禁的 [run 42972813365](https://github.com/youjiaxing/git-diff-review/actions/runs/42972813365) 在上传资产时返回 `Bad Content-Length (HTTP 400)`，仅留下 0.3.7 的受控草稿，未公开缺包版本。上传改为使用真实临时文件及 `gh release upload`，不覆盖已有资产。
+- 0.3.8 的 [run 42973523087](https://github.com/youjiaxing/git-diff-review/actions/runs/42973523087) 已成功构建并公开 0.3.8，但恢复旧草稿时向 Actions artifact 下载端点发送了只适用于 Release 资产的请求头，返回 HTTP 415，整次运行结论为失败。0.3.9 已区分这两类下载端点，并补充对应回归；发布规则检查共 32 项通过。
+- 0.3.7 已在后续运行中从原构建恢复公开，公开 ZIP 的 SHA-256 与上述隔离验证原包完全一致；0.3.8 公开 ZIP 为 144835 字节，SHA-256 为 `785e130ad7ad4bbbb59ec58b4af30addc39239672d6339c2a39e07e4d0748bd9`。两个版本的公开 ZIP、校验文件和 manifest 均已重新下载核验，标签分别指向 `8ee7396e59d9e8250721dd0d9e92e654066784f8` 和 `b6a653029291a2d2f4d991ab12b150048e6198f5`。0.3.7 较晚恢复公开未将 Latest 从 0.3.8 回退。
+- 最终 [run 42973852121](https://github.com/youjiaxing/git-diff-review/actions/runs/42973852121) 的 build、publish、recover、latest 四个 job 全部成功。0.3.9 远端通过 32 项发布规则、15 项历史、19 项选区变换和 24 项真实 Git 事务检查；[正式 Release](https://github.com/youjiaxing/git-diff-review/releases/tag/v0.3.9) 已公开且为 Latest，标签指向 `f30d1db985ba25777835a3771ba85b7bb6a16fca`。从公开地址重新下载的安装 ZIP 为 144835 字节，SHA-256 为 `8b6e619b99a367912e663271ad0989a9e163113b97b44f5332e734b8a8d553ef`，已通过 `release.py verify` 的 ZIP、校验文件、manifest 及提交身份核验。
+- 0.3.8／0.3.9 是发布基础设施修复版本；完整 GoLand 189 项集成及加载证据属于上面的确切 0.3.7 原包，不声称对 0.3.9 重新执行了完整 IDE 集成。未向 Marketplace 发布，也未更新或重启日常 IDE。
 
 ### 0.3.6 选区有效动作与 Discard
 
@@ -142,8 +147,8 @@
 - Unified、Combined、三栏冲突、分屏与历史提交不在首版接管范围内。
 - INDEX 与本地内容不同的声明解析仍由 GoLand 原生处理，首版只在两者相等时补充工作区 PSI 上下文。
 - IDE 当前通过的 `GotoDeclarationAction.findAllTargetElements` 在该 SDK 标有 `TestOnly`，导航扩展和暂存区接口也包含实验／内部 API。插件将版本锁在 `262.*`，升级主版本需重新适配和验证。
-- `gradlew buildPlugin` 因本机访问 Gradle 插件仓库时 TLS 握手失败，未完成标准 Gradle 构建验证；本地 SDK 脚本已完成实际编译、测试和打包。
-- GitHub Actions 仅设置手动触发；尚未在远端运行。
+- 本机 `gradlew buildPlugin` 曾因访问 Gradle 插件仓库时 TLS 握手失败；标准 Gradle 构建现已在远端 Windows／Java 25 通过，本机仍可使用 SDK 构建脚本。
+- GitHub Actions 已支持 main 推送、PR 和手动触发；main 的正式版本自动发布已启用。云端回归不包含完整 IDE 集成与物理鼠标体验验证。
 
 ## 本地操作隔离
 
