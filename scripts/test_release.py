@@ -354,6 +354,57 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(result["source_run"], "")
         self.assertEqual(result["publish"], "false")
 
+    def test_upload_uses_sized_file_without_clobber(self):
+        def run(command, **kwargs):
+            self.assertEqual(command[:4], ["gh", "release", "upload", "v0.3.7"])
+            self.assertEqual(Path(command[4]).read_bytes(), b"exact bytes")
+            self.assertNotIn("--clobber", command)
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+        with patch.object(subprocess, "run", side_effect=run):
+            release.Api(self.api.repo).upload({"tag_name": "v0.3.7"}, "install.zip", b"exact bytes")
+
+    def recovery_fixture(self):
+        release.git("init", "-q", "--initial-branch=main")
+        first = self.commit({".gitignore": "dist/\n", "src/main/example.java": "production"})
+        self.manifest["commit"] = first
+        (self.out / release.MANIFEST).write_text(json.dumps(self.manifest))
+        release.publish(self.api, self.out)
+        self.api.items[0]["draft"] = True
+        wrapper = io.BytesIO()
+        with ZipFile(wrapper, "w") as archive:
+            for name in [self.manifest["file"], self.manifest["file"] + ".sha256", release.MANIFEST]:
+                archive.writestr(name, (self.out / name).read_bytes())
+        original = self.api.call
+        def call(path, *args, **kwargs):
+            if "/actions/artifacts/11/zip" in path:
+                return wrapper.getvalue()
+            return original(path, *args, **kwargs)
+        self.api.call = call
+        receipt = dict(self.manifest, artifact_id=11)
+        self.commit({"docs/release-recovery.json": json.dumps(receipt), "gradle.properties": "pluginVersion=0.3.8\n"})
+        return first
+
+    def test_transport_repair_only_resumes_an_existing_original_draft(self):
+        self.recovery_fixture()
+        with patch.object(release, "source_artifact", return_value={"id": 11}):
+            release.recover_draft(self.api, Path("recovery"), release.git("rev-parse", "HEAD"))
+        self.assertFalse(self.api.items[0]["draft"])
+        self.assertEqual(release.ownership(self.api.items[0])["commit"], self.manifest["commit"])
+
+    def test_recovery_does_not_create_a_release_for_an_unowned_record(self):
+        self.recovery_fixture()
+        self.api.items[0]["body"] = "somebody else's draft"
+        mutations = list(self.api.mutations)
+        with self.assertRaises(ValueError):
+            release.recover_draft(self.api, Path("recovery"), release.git("rev-parse", "HEAD"))
+        self.assertEqual(self.api.mutations, mutations)
+
+    def test_completed_recovery_never_needs_expired_actions_artifacts(self):
+        self.recovery_fixture()
+        self.api.items[0]["draft"] = False
+        with patch.object(release, "source_artifact", side_effect=AssertionError("must not download artifacts")):
+            release.recover_draft(self.api, Path("recovery"), release.git("rev-parse", "HEAD"))
+
 
 if __name__ == "__main__":
     unittest.main()

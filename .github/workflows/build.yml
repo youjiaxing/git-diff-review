@@ -119,9 +119,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/release.py publish --directory release-package --sha '${{ needs.build.outputs.sha }}'
 
+  recover:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: release-draft-recovery
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Recover a recorded existing draft with its original build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/release.py recover --directory recovery-package
+
   latest:
-    needs: [build, publish]
-    if: always() && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
+    needs: [build, publish, recover]
+    if: always() && github.ref == 'refs/heads/main' && (needs.publish.result == 'success' || needs.recover.result == 'success' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:

@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile
 
@@ -107,10 +108,16 @@ class Api:
         return self.call(f"repos/{self.repo}/releases/assets/{asset['id']}", binary=False)
 
     def upload(self, release, name, data):
-        # Never follow a response-provided upload URL with credentials.
-        from urllib.parse import quote
-        path = f"https://uploads.github.com/repos/{self.repo}/releases/{release['id']}/assets?name={quote(name)}"
-        return self.call(path, "POST", binary=data, content_type="application/octet-stream")
+        # The upload API requires a known Content-Length; gh's streaming `api --input -`
+        # can use chunked encoding. `release upload` sends the size of the actual file.
+        if Path(name).name != name:
+            raise ValueError("Invalid asset name")
+        with tempfile.TemporaryDirectory(prefix="diff-review-upload-") as directory:
+            path = Path(directory) / name
+            path.write_bytes(data)
+            result = subprocess.run(["gh", "release", "upload", release["tag_name"], str(path), "--repo", self.repo], capture_output=True)
+            if result.returncode:
+                raise RuntimeError("Asset upload failed: " + result.stderr.decode("utf-8", errors="replace").strip())
 
 
 def ownership(release):
@@ -357,6 +364,42 @@ def latest(api):
     print("Latest: " + release["html_url"])
 
 
+def recover_draft(api, directory, current_sha):
+    """Repair a previously owned draft using its original successful build and bytes."""
+    receipt_path = Path("docs/release-recovery.json")
+    if not receipt_path.exists():
+        print("No draft recovery requested")
+        return
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    version(receipt["version"])
+    tag = "v" + receipt["version"]
+    existing = next((r for r in api.releases() if r["tag_name"] == tag), None)
+    manifest = ownership(existing) if existing else None
+    if manifest is None or manifest["repository"] != api.repo or manifest["commit"] != receipt["commit"] \
+            or manifest["sha256"] != receipt["sha256"] or manifest["run_id"] != receipt["run_id"] \
+            or tag_commit(api, tag) != manifest["commit"] or not ancestor(manifest["commit"], current_sha):
+        raise ValueError("Recovery is limited to an existing owned draft and its original build")
+    if not existing["draft"]:
+        verify_remote(api, existing, manifest)
+        print("Recovery already completed: " + existing["html_url"])
+        return
+    artifact = source_artifact(api, manifest["run_id"], manifest["commit"], manifest["run_attempt"])
+    if artifact["id"] != receipt["artifact_id"]:
+        raise ValueError("Recovery artifact does not match the recorded original")
+    data = api.call(f"repos/{api.repo}/actions/artifacts/{artifact['id']}/zip", binary=False)
+    directory.mkdir(parents=True, exist_ok=True)
+    expected = {manifest["file"], manifest["file"] + ".sha256", MANIFEST}
+    with ZipFile(io.BytesIO(data)) as archive:
+        files = [n for n in archive.namelist() if not n.endswith("/")]
+        if len(files) != 3 or set(files) != expected:
+            raise ValueError("Unexpected recovery artifact contents")
+        for name in files:
+            (directory / name).write_bytes(archive.read(name))
+    if verify_files(directory, manifest["commit"], manifest["sha256"]) != manifest:
+        raise ValueError("Recovery must use the original draft manifest")
+    publish(api, directory)
+
+
 def output(**values):
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
@@ -367,7 +410,7 @@ def output(**values):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["plan", "manifest", "verify", "publish", "latest"])
+    parser.add_argument("command", choices=["plan", "manifest", "verify", "publish", "latest", "recover"])
     parser.add_argument("--directory", type=Path, default=Path("build/distributions"))
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "youjiaxing/git-diff-review"))
     parser.add_argument("--sha", default=os.environ.get("GITHUB_SHA"))
@@ -440,6 +483,10 @@ def main():
             if manifest["commit"] != args.sha:
                 raise ValueError("Release does not match the selected build commit")
             publish(api, args.directory)
+        elif args.command == "recover":
+            if os.environ.get("GITHUB_REF") != "refs/heads/main":
+                raise ValueError("Draft recovery requires trusted main")
+            recover_draft(api, args.directory, args.sha)
         else:
             latest(api)
 
