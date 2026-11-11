@@ -1,7 +1,23 @@
-name: Build plugin
+name: Build and release plugin
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the exact previously validated build (bootstrap/recovery)
+        type: boolean
+        default: false
+      source_run_id:
+        description: Successful main build run containing the validated plugin ZIP
+        type: string
+        default: ''
+      expected_sha256:
+        description: SHA-256 of the exact plugin ZIP validated in isolated GoLand
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -9,15 +25,116 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      sha: ${{ steps.plan.outputs.sha }}
+      publish: ${{ steps.plan.outputs.publish }}
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Test release rules
+        run: python -m unittest discover -s scripts -p test_release.py -v
+      - name: Plan version and publication
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_REQUESTED: ${{ inputs.publish || false }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+        run: python scripts/release.py plan
       - uses: actions/setup-java@v4
+        if: steps.plan.outputs.source_run == ''
         with:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
-      - run: .\gradlew.bat buildPlugin
-      - uses: actions/upload-artifact@v4
+        if: steps.plan.outputs.source_run == ''
+      - name: Build and run regression checks
+        if: steps.plan.outputs.source_run == ''
+        run: |
+          git --version
+          .\gradlew.bat clean buildPlugin --stacktrace
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Record package identity
+        if: steps.plan.outputs.source_run == ''
+        run: python scripts/release.py manifest
+      - name: Download the exact validated build
+        if: steps.plan.outputs.source_run != ''
+        uses: actions/download-artifact@v4
         with:
-          name: git-diff-review
-          path: build/distributions/*.zip
+          artifact-ids: ${{ steps.plan.outputs.artifact_id }}
+          run-id: ${{ steps.plan.outputs.source_run }}
+          github-token: ${{ github.token }}
+          path: build/distributions
+          merge-multiple: true
+      - name: Verify package and original evidence
+        env:
+          EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+        run: python scripts/release.py verify --sha '${{ steps.plan.outputs.sha }}'
+      - uses: actions/upload-artifact@v4
+        id: artifact
+        with:
+          name: plugin-${{ steps.plan.outputs.sha }}-${{ github.run_attempt }}
+          path: |
+            build/distributions/*.zip
+            build/distributions/*.sha256
+            build/distributions/release-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main' && needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: release-${{ needs.build.outputs.version }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release-package
+          merge-multiple: true
+      - name: Publish verified immutable assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/release.py publish --directory release-package --sha '${{ needs.build.outputs.sha }}'
+
+  latest:
+    needs: [build, publish]
+    if: always() && github.ref == 'refs/heads/main' && needs.build.result == 'success' && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: release-latest
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Reconcile highest published stable version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/release.py latest

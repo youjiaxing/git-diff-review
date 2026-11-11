@@ -27,6 +27,7 @@ java {
 intellijPlatform {
     pluginConfiguration {
         name = "Git Diff Review"
+        version = providers.gradleProperty("pluginVersion")
         ideaVersion {
             sinceBuild = "262"
             untilBuild = "262.*"

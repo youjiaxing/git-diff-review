@@ -1,7 +1,6 @@
 <idea-plugin>
   <id>io.github.youjiaxing.git-diff-review</id>
   <name>Git Diff Review</name>
-  <version>0.3.6</version>
   <vendor url="https://github.com/youjiaxing">youjiaxing</vendor>
   <description><![CDATA[
     <p>Follow code navigation across Git Staging diffs, unchanged source and single usage results.

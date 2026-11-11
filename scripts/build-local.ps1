@@ -4,6 +4,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+. "$PSScriptRoot\plugin-version.ps1"
 if (!$JdkPath -or !(Test-Path -LiteralPath "$JdkPath\bin\javac.exe")) { throw 'Specify -JdkPath (JDK 25 or newer).' }
 if (!(Test-Path -LiteralPath "$IdePath\product-info.json")) { throw 'IdePath must be a JetBrains IDE installation.' }
 $product = Get-Content -LiteralPath "$IdePath\product-info.json" -Raw | ConvertFrom-Json
@@ -32,9 +33,16 @@ foreach ($testClass in @('SelectedLinesTest', 'GitIndexTransactionTest')) {
     & "$JdkPath\bin\java.exe" -cp "$testClasses;$classes;$cp" "io.github.youjiaxing.diffnav.$testClass"
     if ($LASTEXITCODE -ne 0) { throw "$testClass failed." }
 }
-$jar = Join-Path $package 'git-diff-review-0.3.6.jar'
-& "$JdkPath\bin\jar.exe" --create --file $jar -C $classes . -C "$root\src\main\resources" .
+$resources = Join-Path $output 'resources'
+Copy-Item -LiteralPath "$root\src\main\resources" -Destination $resources -Recurse
+[xml]$descriptor = Get-Content -LiteralPath "$resources\META-INF\plugin.xml" -Raw
+$versionElement = $descriptor.CreateElement('version')
+$versionElement.InnerText = $pluginVersion
+$descriptor.DocumentElement.InsertAfter($versionElement, $descriptor.DocumentElement.SelectSingleNode('name')) | Out-Null
+$descriptor.Save("$resources\META-INF\plugin.xml")
+$jar = Join-Path $package "git-diff-review-$pluginVersion.jar"
+& "$JdkPath\bin\jar.exe" --create --file $jar -C $classes . -C $resources .
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed.' }
-$zip = Join-Path $output 'git-diff-review-0.3.6.zip'
+$zip = Join-Path $output "git-diff-review-$pluginVersion.zip"
 Compress-Archive -LiteralPath (Join-Path $output 'git-diff-review') -DestinationPath $zip -Force
 Write-Output "Built for $($product.name) $($product.version) ($($product.buildNumber)): $zip"

@@ -66,7 +66,7 @@ INDEX 文件与工作区内容相同时，声明解析会使用工作区 PSI 上
   -JdkPath 'C:\path\to\jdk-25'
 ```
 
-输出 `build/local/git-diff-review-0.3.6.zip`。脚本会先运行历史、选中行变换及独立临时 Git 仓库的事务检查。
+输出 `build/local/git-diff-review-<版本号>.zip`。唯一版本来源为 `gradle.properties` 的 `pluginVersion`，本地打包、安装和 Gradle 描述符都读取该值。脚本会先运行历史、选中行变换及独立临时 Git 仓库的事务检查。
 
 标准 Gradle 构建使用 [IntelliJ Platform Gradle Plugin](https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html)：
 
@@ -92,6 +92,8 @@ Gradle 输出在 `build/distributions/`。首次运行需要访问 Gradle、JetB
 
 ## 安装与卸载
 
+正式安装包下载入口：[GitHub Releases](https://github.com/youjiaxing/git-diff-review/releases)。选择对应版本的 `git-diff-review-<版本号>.zip`，不要选择 GitHub 自动生成的 Source code 压缩包。可用同名 `.sha256` 文件核对安装包摘要；`release-manifest.json` 记录构建提交、工作流运行及原始安装包身份。
+
 GoLand → 设置 → 插件 → 齿轮 → 从磁盘安装插件，选择生成的 ZIP，并按 IDE 提示重启。随后在「提交」工具窗口的未暂存文件上打开 Diff，即可使用原有代码跳转操作。
 
 本机已安装旧版时，也可运行 `scripts/install-local.ps1 -IdePath ... -JdkPath ...`：备份旧版并使用 IDE 原生启动更新队列安排升级，不结束当前 IDE。`-VerifyOnly` 在 `build/` 隔离目录验证更新，不修改日常安装。
@@ -103,6 +105,16 @@ GoLand → 设置 → 插件 → 齿轮 → 从磁盘安装插件，选择生成
 安装脚本默认从指定 IDE 的 `product-info.json` 推导配置和系统目录；自定义位置可显式传入 `-ConfigPath` 和 `-SystemPath`。测试启动脚本仍以 GoLand 为验证环境。
 
 卸载：设置 → 插件 → Git Diff Review → 卸载。审阅历史仅保存在内存中。
+
+## 提交、构建与自动发布
+
+授权提交并推送插件更新时，同时授权该版本的 GitHub Release 公开发布，无需另行打标签或再次确认发布。提交前维护正式 `major.minor.patch` 版本，常规修复递增 patch；用户指定版本优先。插件源码、构建、打包及验证流程修改都要求更新版本。仅 Markdown／docs 等文档修改不重复发版，流水线不会自动提交版本号。
+
+`main` 推送自动执行 Windows／Java 25 远端 SDK 构建、历史／选区变换／真实 Git 事务检查及最终 ZIP 核验；通过后创建指向实际构建提交的 `v<版本号>` 标签和正式 Release，发布安装 ZIP、校验文件及构建证据。PR 和其他分支不发布。CI 不自动运行本机全部 IDE 集成或鼠标体验检查，当前实测兼容范围仍为 GoLand 262。
+
+发布以目标提交历史中最近成功的本流程正式版本为基线，累计检查尚未发布的源码、构建和验证变更；失败后补推文档也不能掩盖漏改版本号。相同版本的产物变更会失败，不覆盖旧标签或公开安装包。同一发行重跑核验已有原始资产；未完成草稿只恢复能确认原始构建身份的内容。不同版本可以并行完成，Latest 单独串行重算最高正式版本。
+
+首次接入时 `.github/release-policy.json` 的 `automatic` 保持 `false`：先取得成功的远端构建产物，在隔离 GoLand 验证该确切 ZIP 的加载，再通过同一工作流的手动入口指定 `publish=true`、原 `source_run_id` 和已验证的 `expected_sha256` 完成首次公开。随后仅切换已经验证的自动发布门禁为 `true` 的配置提交可沿用原版本；此例外不包含构建、校验或资产选择逻辑修改。门禁开放后正常推送无需再操作该入口。需要恢复 Latest 时可手动运行工作流或重跑对应 Latest job。
 
 ## 实现入口
 

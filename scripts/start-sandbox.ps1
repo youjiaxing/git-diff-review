@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+. "$PSScriptRoot\plugin-version.ps1"
 & "$PSScriptRoot\build-local.ps1" -IdePath $IdePath -JdkPath $JdkPath
 $sandbox = Join-Path (Join-Path $root 'build') $SandboxName
 $fixture = Join-Path $sandbox 'diffnav-fixture'
@@ -25,7 +26,7 @@ foreach ($sandboxPlugin in @('goland-diff-navigation', 'git-diff-review')) {
     }
 }
 New-Item -ItemType Directory -Path $fixture,$options,$pluginLib,$testLib -Force | Out-Null
-Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.6.jar" -Destination $pluginLib
+Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-$pluginVersion.jar" -Destination $pluginLib
 $cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$root\build\local\classes"
 $testClasses = Join-Path $sandbox 'smoke-classes'
 $sources = @(Get-ChildItem -LiteralPath "$root\src\smoke\java" -Filter '*.java' -Recurse | ForEach-Object FullName)

@@ -11,12 +11,15 @@ public final class QueuePluginUpdate {
         Path script = Path.of(args[1]).toAbsolutePath().normalize();
         var existing = StartupActionScriptManager.loadActionScript(script);
         if (args[0].equals("inspect")) { existing.forEach(System.out::println); return; }
+        String version = args[4];
+        if (!version.matches("(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)"))
+            throw new IllegalArgumentException("Invalid stable version");
         Path archive = Path.of(args[2]).toRealPath();
         Path plugins = Path.of(args[3]).toAbsolutePath().normalize();
         Path plugin = plugins.resolve("git-diff-review");
         Path legacy = plugins.resolve("goland-diff-navigation");
         if (!plugin.getParent().equals(plugins) || !legacy.getParent().equals(plugins)
-                || !archive.getFileName().toString().equals("git-diff-review-0.3.6.zip"))
+                || !archive.getFileName().toString().equals("git-diff-review-" + version + ".zip"))
             throw new IllegalArgumentException("Unexpected update target or archive");
         var commands = new ArrayList<ActionCommand>();
         for (var command : existing) {
@@ -44,9 +47,9 @@ public final class QueuePluginUpdate {
             if (Files.exists(legacy)) throw new IllegalStateException("Legacy plugin was not removed");
             try (var files = Files.list(plugin.resolve("lib"))) {
                 var installed = files.map(path -> path.getFileName().toString()).toList();
-                if (!installed.equals(List.of("git-diff-review-0.3.6.jar"))) throw new IllegalStateException(installed.toString());
+                if (!installed.equals(List.of("git-diff-review-" + version + ".jar"))) throw new IllegalStateException(installed.toString());
             }
-            System.out.println("Verified deferred update: only version 0.3.6 remains");
+            System.out.println("Verified deferred update: only version " + version + " remains");
         }
     }
 }
