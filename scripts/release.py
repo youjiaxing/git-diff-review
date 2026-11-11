@@ -84,7 +84,7 @@ class Api:
             command += ["--input", "-"]
         if content_type:
             command += ["-H", "Content-Type: " + content_type]
-        if method == "GET" and binary is False:
+        if method == "GET" and binary is False and "/actions/artifacts/" not in path:
             command += ["-H", "Accept: application/octet-stream"]
         result = subprocess.run(command, input=payload, capture_output=True)
         if result.returncode:

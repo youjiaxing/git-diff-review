@@ -363,6 +363,18 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(subprocess, "run", side_effect=run):
             release.Api(self.api.repo).upload({"tag_name": "v0.3.7"}, "install.zip", b"exact bytes")
 
+    def test_actions_zip_download_keeps_json_accept_and_release_asset_uses_octet(self):
+        commands = []
+        def run(command, **kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, b"zip bytes", b"")
+        with patch.object(subprocess, "run", side_effect=run):
+            api = release.Api(self.api.repo)
+            self.assertEqual(api.call("repos/owner/repo/actions/artifacts/11/zip", binary=False), b"zip bytes")
+            self.assertEqual(api.call("repos/owner/repo/releases/assets/22", binary=False), b"zip bytes")
+        self.assertNotIn("Accept: application/octet-stream", commands[0])
+        self.assertIn("Accept: application/octet-stream", commands[1])
+
     def recovery_fixture(self):
         release.git("init", "-q", "--initial-branch=main")
         first = self.commit({".gitignore": "dist/\n", "src/main/example.java": "production"})
