@@ -4,6 +4,16 @@
 
 ## 已完成
 
+### 0.3.7 GitHub 构建与正式版本自动发布
+
+- `gradle.properties` 的 `pluginVersion` 成为唯一版本来源。Gradle 注入描述符版本，本地打包生成版本化资源，安装脚本及安装队列验证 helper 读取同一版本；不再逐处替换硬编码版本。本地构建 15 项历史、19 项选区变换、24 项真实 Git 事务检查及 0.3.7 升级隔离模拟通过。
+- 发布脚本的 27 项检查覆盖真实临时 Git 历史和隔离 API 模拟：累计未发布变更、文档豁免、版本回退、版本／标签冲突、ZIP 及生产描述符、测试代码泄漏、原始摘要、完整草稿后公开、部分上传恢复、公开资产不覆盖、同 SHA 重跑及 Latest 最高版本重算；新增首次验证记录的原 SHA／artifact ID 绑定、产物变化拒绝及版本公开后的记录失效。
+- 标准远端 Gradle 构建首次实际跑通。最终 [Actions run 42972054181](https://github.com/youjiaxing/git-diff-review/actions/runs/42972054181) 对提交 `8ee7396e59d9e8250721dd0d9e92e654066784f8` 完成 Windows／Java 25 构建、27 项发布规则检查、三类 Java 回归及安装 ZIP 校验。此证据取代此前“标准 Gradle 因本机 TLS 未完成”的当前构建缺口，历史记录仍保留原发生条件。
+- 远端原始 artifact `13834200751` 中的 `git-diff-review-0.3.7.zip` 为 144835 字节，SHA-256 为 `f1d65917002975f331ff7748816b08b7eba7aa98d0312d749b8ab164eb8f8c79`；通过 GitHub 连接应用下载，安装包与 manifest、校验文件一致。`start-sandbox.ps1 -PluginArchive` 直接安装该 ZIP，不重新打包；独立 GoLand 日志已确认实际加载 `Git Diff Review (0.3.7)`。
+- 使用该远端 ZIP 的 `build/sandbox-release-v037/smoke-report.txt` 为 `PASS 189 integration checks`，平台 ERROR／SEVERE 为 0。该结果仅属于本次安装产物验证，不代表未来每次云端 CI 都运行 IDE 或物理鼠标测试。
+- CI 发布以目标提交祖先中的成功正式版本为基线，PR／非 main 不公开发布，失败不公开不完整资产。同版本的公开标签与安装包不覆盖；已完成重跑核验原资产，草稿恢复使用原 attempt 的成功 build 与固定 artifact。构建 job 只读，发布 job 使用 `contents: write`，跨 run 下载使用 `actions: read`。不同正式版本独立处理，Latest 串行重新查询最高正式版本。
+- 本机 CLI 的 Actions 产物下载及 workflow_dispatch 返回 403；GitHub 连接应用能下载。首次发布因此通过主干中的隔离验证记录及门禁配置推送启动，仍复用上面的确切 SHA／ZIP／摘要，未引入新凭据或放宽来源检查。IDE 兼容性仍只实测 GoLand 262，Marketplace 保持暂缓，日常 IDE 未被重启。
+
 ### 0.3.6 选区有效动作与 Discard
 
 - 选行操作统一在后台读取 HEAD、INDEX、LOCAL 并生成候选，浮窗、右键和快捷键使用同一份资格结果。INDEX ↔ LOCAL 左侧的 Unstage 单独对照 HEAD；未暂存删除仍可 Stage／Discard，纯上下文无可执行动作。原合并快捷动作遇到 Stage／Unstage 同时有效时明确选择，不执行隐式 Discard。不同侧不能复用旧选区计划，后台动作更新不抢走另一侧的选区归属。
