@@ -1,7 +1,7 @@
 <idea-plugin>
   <id>io.github.youjiaxing.git-diff-review</id>
   <name>Git Diff Review</name>
-  <version>0.3.4</version>
+  <version>0.3.5</version>
   <vendor url="https://github.com/youjiaxing">youjiaxing</vendor>
   <description><![CDATA[
     <p>Follow code navigation across Git Staging diffs, unchanged source and single usage results.
@@ -16,6 +16,8 @@
     matching files in the visible Commit tree while preserving manual multi-selection.</p>
     <p>Compare with Staged from a source editor opens the Commit review preview for the
     file's unstaged changes, including selected-line staging, with native comparison fallback.</p>
+    <p>Untracked source files can open their native new-file preview from the same menu.
+    Partial staging reloads the preview against the latest index without reopening its tab.</p>
     <p>Targets IntelliJ platform build 262 with Git4Idea. Currently tested with GoLand 2026.2;
     compatibility with other JetBrains IDEs is not yet verified.</p>
   ]]></description>
@@ -37,6 +39,7 @@
               topic="com.intellij.openapi.actionSystem.ex.AnActionListener"/>
   </applicationListeners>
   <actions>
+    <action id="Git.Stage.Compare.Local.Staged" class="io.github.youjiaxing.diffnav.CompareWithStagedAction" overrides="true"/>
     <action id="DiffNavigation.SelectedLines" class="io.github.youjiaxing.diffnav.StageSelectedLinesAction"
             text="Stage / Unstage 选中行" description="只操作选中的连续行">
       <add-to-group group-id="Diff.EditorPopupMenu" anchor="first"/>

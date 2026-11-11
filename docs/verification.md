@@ -4,6 +4,20 @@
 
 ## 已完成
 
+### 0.3.5 新增文件菜单与连续暂存刷新
+
+- 纯未跟踪文件可通过原有 `Git.Stage.Compare.Local.Staged` 菜单进入同窗口原生“空版本 ↔ 本地”提交预览；打开预览不创建 index 条目。仍保留普通源码资格、原生暂存区可用性和项目启用偏好，其他比较动作不接管，显式入口不受自动导航的新增文件偏好限制。
+- 新增 `CompareWithStagedAction` 声明式同 ID 覆盖，先委托原动作的启用逻辑，仅为支持的未跟踪源码扩展启用。原动作可能仍为 `ActionStub`，因此延迟取得 base，使用 SDK 无状态原生类及 `stub.initAction` 保留原有本地化文本与快捷键信息。声明式卸载由平台恢复 base；没有使用会残留 wrapper/base 注册记录的程序化反向 `replaceAction`。
+- `StageRefreshService` 在选行事务开始前记录所属预览和取消监听，写入成功后等待状态与树模型，按完整路径重新选择 UNSTAGED，并强制重新加载请求、核对实际 INDEX 文本。后续同类型 Stage 同样绕过请求缓存。旧视图被标为过期，等待基线确认期间不再允许按行写入；刷新超时仍保留真实写入结果并记录原因。删除文件没有本地侧，保留原生刷新路径。
+- 用户切标签、手动树输入、动作导航、关闭预览或应用设置会终止该次自动重选；切走再切回不复活。显式重新打开已取消刷新的预览会重新加载旧请求，能够再次按行操作。纯未跟踪预览打开失败后，仅当请求仍拥有当前窗口才恢复原源码；已跟踪文件维持原生 fallback。
+- 初始复现 `build/probe-newfile-refresh/report.txt`：真实 index 仅包含所选 `second` 行，工作区未变，但预览仍为 UNTRACKED 单栏；手动重选 UNSTAGED 后左侧正确显示 index。`build/sandbox-newfile-menu-red/smoke-report.txt` 记录旧版纯新文件菜单不可用。
+- 第一轮完整回归发现 AsyncChangesTree 的完成回调虽在 EDT，仍可能是写不安全上下文；强制重载触发原生暂存请求解绑检查。已在回调后通过 `invokeLater(...nonModal)` 执行预览更新，最终日志无该错误。独立实现审查发现删除侧不适合新协调流程，已按本地文件存在性分流并跑删除 Stage／Unstage 回归。
+- 用户指出隔离测试中出现“内容已变化，请重新选择”模态提示后，补充立即切换预览的竞争场景；过期操作安静取消，异步失败记录在状态栏 tooltip／诊断原因中，不再以模态信息框阻断后续操作。未保存源码等执行前提示和歧义结果确认不受此项调整影响。
+- 最终独立实例 `build/sandbox-newfile-v035-nonmodal/smoke-report.txt`：`PASS 168 integration checks`；对应 `log/idea.log` ERROR／SEVERE 计数为 0。新增覆盖原生菜单 update／执行、预览打开前 index 无条目、部分 Stage 单栏到双栏、连续 Stage 最新左侧内容、等待期间禁止旧选区再写、工作区和无关 index 保留、禁用插件、自动开始／新增文件偏好关闭、切走／切回、显式重开恢复可操作、手动树输入以及切换预览时无阻塞信息框；保留已有菜单、分屏、导航、历史、删除和新增文件回归。
+- 独立生命周期探针 `build/probe-action-lifecycle-safe/report.txt` 实际调用平台插件卸载：覆盖动作正确委托 Git 原生动作，卸载成功后同 ID 恢复 `GitStageCompareLocalWithStagedAction`，探针日志 ERROR／SEVERE 为 0。首次探针直接在 EDT 调用仅允许后台的校验 API 产生测试代码日志；修正为平台自身卸载入口后重新通过。该探针只位于 `build/`，不进入安装包。未声称多个第三方插件同时覆盖同一 ID 的任意卸载顺序均已验证。
+- 本地 SDK 构建通过：15 项历史、14 项选区变换、20 项真实 Git 事务检查。正式 0.3.5 ZIP 的插件 ID、版本、单一 JAR 结构、覆盖声明及不含 smoke/test 类已核对；安装升级模拟通过。真实菜单通过 ActionSystem、选区及树输入通过测试驱动触发，没有声称逐项物理鼠标验证。
+- 日常 GoLand 已安排下次启动更新为 0.3.5，旧版及原队列备份于 `build/install-v035/backup-20261111-103541`。本轮独立测试实例已关闭，日常 IDE 未重启；实际加载待用户重启后确认。
+
 ### 0.3.4 源码比较进入提交审阅预览
 
 - 普通本地源码的原生 `Git.Stage.Compare.Local.Staged` 菜单优先使用提交面板拥有的预览，按完整路径精确选择 UNSTAGED，比较 INDEX ↔ LOCAL。显式打开可显示隐藏面板、替换多选，并在发起命令的编辑窗口中打开或复用预览；保留源码标签，不强制改写范围、自动开始、暂停或新增文件导航偏好。

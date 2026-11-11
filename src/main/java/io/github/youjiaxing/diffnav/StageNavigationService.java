@@ -158,6 +158,7 @@ public final class StageNavigationService implements Disposable {
     }
     public void settingsChanged() {
         project.getService(SourceCompareService.class).cancel();
+        project.getService(StageRefreshService.class).userIntent();
         cancelPending();
         sessions.values().forEach(ReviewSession::close);
         sessions.clear();
@@ -166,6 +167,7 @@ public final class StageNavigationService implements Disposable {
         reason(isEnabled() ? "设置已更新，从 Diff 开始下一次审阅" : "审阅导航已禁用");
     }
     public String getLastReason() { return lastReason; }
+    void comparisonFailed(String text) { reason(text); }
     public String statusText() { return !isEnabled() ? "Diff Review: Off" : active == null ? "Diff Review: Idle" : "Diff Review: On"; }
     public boolean isReviewing(DataContext context) { return session(context, false) != null; }
     public boolean canToggleReview(DataContext context) { return isEnabled() && (contextStage(context) != null || session(context, false) != null); }

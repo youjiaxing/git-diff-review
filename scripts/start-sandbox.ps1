@@ -25,7 +25,7 @@ foreach ($sandboxPlugin in @('goland-diff-navigation', 'git-diff-review')) {
     }
 }
 New-Item -ItemType Directory -Path $fixture,$options,$pluginLib,$testLib -Force | Out-Null
-Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.4.jar" -Destination $pluginLib
+Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.5.jar" -Destination $pluginLib
 $cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$root\build\local\classes"
 $testClasses = Join-Path $sandbox 'smoke-classes'
 $sources = @(Get-ChildItem -LiteralPath "$root\src\smoke\java" -Filter '*.java' -Recurse | ForEach-Object FullName)
@@ -79,6 +79,9 @@ Move-Item -LiteralPath "$fixture\menu-rename-old.txt" -Destination "$fixture\men
 Set-Content -LiteralPath "$fixture\menu-renamed.txt" -Encoding utf8 -Value "rename old`nanchor`ntail`nlocal edit"
 Set-Content -LiteralPath "$fixture\replace.txt" -Encoding utf8 -Value "newOneLong`nnewTwoLong`ntail"
 [IO.File]::WriteAllText((Join-Path $fixture 'new-no-eol.txt'), 'newOnly', [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $fixture 'review-new.txt'), "first`nsecond`nthird`nfourth`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $fixture 'review-cancel.txt'), "alpha`nbeta`ngamma`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $fixture 'review-race.txt'), "one`ntwo`nthree`n", [Text.UTF8Encoding]::new($false))
 Set-Content -LiteralPath "$fixture\added\existing.go" -Encoding utf8 -Value "package added`n`nfunc Existing() int { return AddedB() + 1 }"
 Set-Content -LiteralPath "$fixture\added\a.go" -Encoding utf8 -Value "package added`n`nfunc AddedA() int { return AddedB() + AddedStaged() + AddedPartial() }"
 Set-Content -LiteralPath "$fixture\added\b.go" -Encoding utf8 -Value "package added`n`nfunc AddedB() int { return Existing() }"

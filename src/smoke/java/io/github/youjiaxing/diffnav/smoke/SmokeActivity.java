@@ -45,6 +45,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
     private AddedFileChecks addedFiles;
     private UnstagedReviewChecks unstaged;
     private CompareMenuChecks compareMenu;
+    private NewFileReviewChecks newFileReview;
 
     @Override public void runActivity(Project project) {
         String output = System.getProperty("diffnav.smoke.report");
@@ -119,6 +120,8 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
                 if (ticks % 15 == 0) log("WAIT no Commit toolwindow; windows=" + java.util.Arrays.toString(ToolWindowManager.getInstance(project).getToolWindowIds()));
                 return;
             }
+            if (newFileReview == null) newFileReview = new NewFileReviewChecks(project, this::check);
+            if (!newFileReview.tick()) return;
             if (compareMenu == null) compareMenu = new CompareMenuChecks(project, this::check);
             if (!compareMenu.tick()) return;
             window.show();

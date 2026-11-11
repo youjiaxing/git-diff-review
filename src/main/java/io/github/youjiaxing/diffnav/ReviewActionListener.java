@@ -27,6 +27,7 @@ public final class ReviewActionListener implements AnActionListener {
         var context = event.getDataContext();
         var compare = project.getService(SourceCompareService.class);
         compare.cancel();
+        project.getService(StageRefreshService.class).userIntent();
         Runnable explicit = "Git.Stage.Compare.Local.Staged".equals(id)
                 ? compare.prepare(context, () -> nativeFallback(action, event)) : null;
         BooleanSupplier navigate = direction != 0 && service.prepareTravel(context, direction) ? () -> service.travel(context, direction)
@@ -53,6 +54,7 @@ public final class ReviewActionListener implements AnActionListener {
         }
     }
     private static void nativeFallback(AnAction action, AnActionEvent event) {
+        action = CompareWithStagedAction.nativeAction(action);
         var fallback = AnActionEvent.createEvent(action, event.getDataContext(), event.getPresentation().clone(),
                 event.getPlace(), event.getUiKind(), event.getInputEvent());
         fallback.getPresentation().putClientProperty(NATIVE_FALLBACK, true);

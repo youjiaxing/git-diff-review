@@ -86,6 +86,7 @@ public final class SourceCompareService implements Disposable {
         final Editor source;
         final EditorWindow window;
         final Runnable fallback;
+        final boolean untracked;
         final NavigationPosition position;
         final Disposable lifetime = Disposer.newDisposable("Source comparison");
         final Alarm alarm;
@@ -97,6 +98,8 @@ public final class SourceCompareService implements Disposable {
 
         Request(VirtualFile file, Editor source, EditorWindow window, Runnable fallback) {
             this.file = file; this.source = source; this.window = window; this.fallback = fallback;
+            var status = git4idea.index.GitStageTrackerKt.status(git4idea.index.GitStageTracker.getInstance(project), file);
+            untracked = status != null && status.isUntracked();
             position = NavigationPosition.capture(source.getDocument(), source.getCaretModel().getOffset());
             Disposer.register(SourceCompareService.this, lifetime);
             Disposer.register(lifetime, position::close);
@@ -145,7 +148,7 @@ public final class SourceCompareService implements Disposable {
             if (SwingUtilities.getWindowAncestor(panel) != SwingUtilities.getWindowAncestor(window.getOwner())) { fail(); return; }
             if (tree.isModelUpdateInProgress()) { retry(); return; }
             Wrapper target = GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(tree).find(w ->
-                    w.getUserObject() instanceof GitFileStatusNode node && node.getKind() == NodeKind.UNSTAGED
+                    w.getUserObject() instanceof GitFileStatusNode node && (node.getKind() == NodeKind.UNSTAGED || untracked && node.getKind() == NodeKind.UNTRACKED)
                             && file.equals(node.getFilePath().getVirtualFile()));
             if (target == null) { retry(); return; }
             if (!supported((GitFileStatusNode) target.getUserObject())) { fail(); return; }
@@ -163,7 +166,11 @@ public final class SourceCompareService implements Disposable {
                     for (var editor : composite.getAllEditors()) if (editor instanceof DiffEditorViewerFileEditor diff
                             && diff.getEditorViewer() instanceof GitStageDiffRequestProcessor processor && processor.getStageTree() == tree) stage = processor;
                     opened = preview.equals(window.getSelectedFile());
-                    if (stage != null) stage.setCurrentChange(target);
+                    if (stage != null) {
+                        boolean stale = stage.getActiveViewer() instanceof com.intellij.diff.tools.util.base.DiffViewerBase viewer && StageRefreshService.isStale(viewer);
+                        stage.setCurrentChange(target);
+                        if (stale) stage.updateRequest(true, false, null);
+                    }
                 } finally { own--; }
                 if (!valid()) return;
                 if (stage == null || !opened) { fail(); return; }
@@ -193,7 +200,11 @@ public final class SourceCompareService implements Disposable {
         void fail() {
             if (!valid()) return;
             cancel();
-            fallback.run();
+            if (!untracked) fallback.run();
+            else {
+                if (opened) window.setSelectedComposite(file, true);
+                project.getService(StageNavigationService.class).comparisonFailed("无法打开新增文件提交预览，请从提交面板重试");
+            }
         }
     }
 

@@ -84,7 +84,12 @@ public final class LineStaging {
         Disposer.register(viewer, controller::closePopup);
     }
 
-    static boolean available(Editor editor) { return editor != null && editor.getUserData(CONTROLLER) != null; }
+    static boolean available(Editor editor) {
+        if (editor == null || editor.getUserData(CONTROLLER) == null) return false;
+        var controller = editor.getUserData(CONTROLLER);
+        var stage = StageNavigationService.processor(DataManager.getInstance().getDataContext(editor.getContentComponent()));
+        return stage != null && !controller.busy.get() && controller.project.getService(StageRefreshService.class).ready(stage, controller.viewer);
+    }
     static void invoke(Editor editor) {
         if (available(editor)) editor.getUserData(CONTROLLER).execute(editor);
     }
@@ -110,7 +115,8 @@ public final class LineStaging {
     private boolean valid(GitStageDiffRequestProcessor stage, Editor editor) {
         if (busy.get() || viewer.isDisposed() || viewer.hasPendingRediff() || editor.isDisposed()
                 || !editor.getSelectionModel().hasSelection() || editor.getCaretModel().getCaretCount() != 1
-                || stage == null || stage.getActiveViewer() != viewer || node(stage) == null) return false;
+                || stage == null || stage.getActiveViewer() != viewer || node(stage) == null
+                || !project.getService(StageRefreshService.class).ready(stage, viewer)) return false;
         NodeKind kind = node(stage).getKind();
         return kind == NodeKind.STAGED || kind == NodeKind.UNSTAGED || kind == NodeKind.UNTRACKED;
     }
@@ -153,6 +159,7 @@ public final class LineStaging {
         boolean unsavedSource = localDocument != null && FileDocumentManager.getInstance().isDocumentUnsaved(localDocument);
         if (!unstage && unsavedSource) { message("本地文件有未保存编辑，请先保存后再按行暂存；插件不会自动保存文件"); return; }
         if (!busy.compareAndSet(false, true)) return;
+        var refresh = project.getService(StageRefreshService.class).begin(stage, selected, node);
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
                 var snapshot = transaction.capture(root, path, fileCharset);
@@ -170,13 +177,21 @@ public final class LineStaging {
                 boolean desiredExists = unstage ? desiredEntry != null : snapshot.worktreeExists();
                 var result = SelectedLines.apply(before, oldEntry != null, wanted, desiredExists, changes, selectDesired, start, end);
                 ApplicationManager.getApplication().invokeLater(() -> {
-                    if (!unchanged(left, right, leftStamp, rightStamp)) { busy.set(false); message("内容已变化，请重新选择"); return; }
-                    if (!result.changed()) { busy.set(false); return; }
+                    if (!unchanged(left, right, leftStamp, rightStamp)) {
+                        if (refresh != null) refresh.cancel();
+                        busy.set(false);
+                        // Switching the preview may dispose the old viewer. Cancel quietly instead
+                        // of interrupting the user's newer navigation with a modal dialog.
+                        if (!project.isDisposed() && !viewer.isDisposed() && !stage.isDisposed() && stage.getActiveViewer() == viewer)
+                            project.getService(StageNavigationService.class).comparisonFailed("内容已变化，已取消本次选行暂存，请重新选择");
+                        return;
+                    }
+                    if (!result.changed()) { if (refresh != null) refresh.cancel(); busy.set(false); return; }
                     String candidate = result.text();
                     boolean exists = result.exists();
                     if (result.needsPreview()) {
                         var dialog = new SelectionPreview(project, before, oldEntry != null, candidate, exists, unstage);
-                        if (!dialog.showAndGet()) { busy.set(false); return; }
+                        if (!dialog.showAndGet()) { if (refresh != null) refresh.cancel(); busy.set(false); return; }
                         candidate = dialog.candidate();
                         exists = !candidate.isEmpty() || result.exists();
                     }
@@ -187,25 +202,32 @@ public final class LineStaging {
                             transaction.commit(snapshot, finalText, finalExists, finalText.equals(result.text()) ? result.baseOrigins() : null,
                                     () -> unchanged(left, right, leftStamp, rightStamp));
                             ApplicationManager.getApplication().invokeLater(() -> {
+                                if (project.isDisposed()) return;
+                                if (refresh != null) StageRefreshService.markStale(viewer);
                                 busy.set(false);
                                 // Refresh from Git; never save the source documents as part of staging.
                                 com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshNioFiles(List.of(snapshot.index()), true, false, null);
                                 git4idea.index.vfs.GitIndexFileSystemRefresher.refreshFilePaths(project, List.of(node.getFilePath()));
                                 GitStageTracker.getInstance(project).updateTrackerState();
-                                if (!stage.isDisposed()) stage.refresh(true);
+                                if (refresh != null) refresh.completed(finalText);
+                                else if (!stage.isDisposed()) stage.refresh(true);
                             }, ModalityState.nonModal());
-                        } catch (Exception failure) { fail(failure); }
+                        } catch (Exception failure) { fail(failure, refresh); }
                     });
                 }, ModalityState.nonModal());
-            } catch (Exception failure) { fail(failure); }
+            } catch (Exception failure) { fail(failure, refresh); }
         });
     }
 
     private boolean unchanged(Document left, Document right, long a, long b) {
         return !project.isDisposed() && !viewer.isDisposed() && left.getModificationStamp() == a && right.getModificationStamp() == b;
     }
-    private void fail(Exception failure) {
-        ApplicationManager.getApplication().invokeLater(() -> { busy.set(false); if (!project.isDisposed()) message(failure.getMessage()); }, ModalityState.nonModal());
+    private void fail(Exception failure, StageRefreshService.Refresh refresh) {
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (refresh != null) refresh.cancel();
+            busy.set(false);
+            if (!project.isDisposed()) project.getService(StageNavigationService.class).comparisonFailed(failure.getMessage());
+        }, ModalityState.nonModal());
     }
     private void message(String text) { Messages.showInfoMessage(project, text, "按行暂存"); }
     private void closePopup() { if (popup != null) { var old = popup; popup = null; old.cancel(); } }
