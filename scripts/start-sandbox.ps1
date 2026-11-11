@@ -1,13 +1,15 @@
 param(
     [Parameter(Mandatory = $true)][string]$IdePath,
     [string]$JdkPath = $env:JAVA_HOME,
+    [string]$PluginArchive,
     [switch]$Reuse,
     [ValidatePattern('^[a-zA-Z0-9_-]+$')][string]$SandboxName = 'sandbox'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\plugin-version.ps1"
-& "$PSScriptRoot\build-local.ps1" -IdePath $IdePath -JdkPath $JdkPath
+if (!$PluginArchive) { & "$PSScriptRoot\build-local.ps1" -IdePath $IdePath -JdkPath $JdkPath }
+elseif (!(Test-Path -LiteralPath $PluginArchive -PathType Leaf)) { throw 'PluginArchive must be an existing plugin ZIP.' }
 $sandbox = Join-Path (Join-Path $root 'build') $SandboxName
 $fixture = Join-Path $sandbox 'diffnav-fixture'
 if ((Test-Path -LiteralPath "$fixture\.git") -and !$Reuse) { throw 'A sandbox fixture already exists. Use -Reuse to run again.' }
@@ -26,8 +28,12 @@ foreach ($sandboxPlugin in @('goland-diff-navigation', 'git-diff-review')) {
     }
 }
 New-Item -ItemType Directory -Path $fixture,$options,$pluginLib,$testLib -Force | Out-Null
-Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-$pluginVersion.jar" -Destination $pluginLib
-$cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$root\build\local\classes"
+if ($PluginArchive) {
+    Expand-Archive -LiteralPath $PluginArchive -DestinationPath (Join-Path $sandbox 'plugins') -Force
+} else {
+    Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-$pluginVersion.jar" -Destination $pluginLib
+}
+$cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$pluginLib\*"
 $testClasses = Join-Path $sandbox 'smoke-classes'
 $sources = @(Get-ChildItem -LiteralPath "$root\src\smoke\java" -Filter '*.java' -Recurse | ForEach-Object FullName)
 & "$JdkPath\bin\javac.exe" -encoding UTF-8 -cp $cp -d $testClasses @sources

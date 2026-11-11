@@ -48,6 +48,8 @@ def ancestor(before, after):
 
 def affects_package(path):
     # Documentation has an explicit exemption. New, unclassified files are conservative.
+    if path.startswith("src/main/"):
+        return True
     return not (path.startswith("docs/") or path.endswith(".md") or path in {"LICENSE", ".gitignore", ".gitattributes"})
 
 
@@ -57,7 +59,7 @@ def changed_paths(before, after):
 
 
 def gate_only(before, after, paths):
-    if paths != [".github/release-policy.json"]:
+    if [p for p in paths if affects_package(p)] != [".github/release-policy.json"]:
         return False
     old = json.loads(git("show", f"{before}:.github/release-policy.json"))
     new = json.loads(git("show", f"{after}:.github/release-policy.json"))
@@ -199,6 +201,17 @@ def verify_files(directory, expected_sha=None, expected_digest=None):
     return manifest
 
 
+def source_artifact(api, run_id, commit, attempt=None):
+    run = verify_run(api, run_id, commit, attempt)
+    artifacts = api.call(f"repos/{api.repo}/actions/runs/{run_id}/artifacts?per_page=100")["artifacts"]
+    name = f"plugin-{commit}-{run['run_attempt']}"
+    matching = [a for a in artifacts if a["name"] == name and not a["expired"] and a["workflow_run"]["id"] == int(run_id)
+                and a["workflow_run"]["head_sha"] == commit and a["workflow_run"]["repository_id"] == run["repository"]["id"]]
+    if len(matching) != 1:
+        raise ValueError("Expected one original, unexpired artifact from this successful run attempt")
+    return matching[0]
+
+
 def tag_commit(api, tag):
     try:
         obj = api.call(f"repos/{api.repo}/git/ref/tags/{tag}")["object"]
@@ -243,9 +256,12 @@ def decide(api, target):
     return current, True, "new version"
 
 
-def verify_run(api, run_id, commit):
-    run = api.call(f"repos/{api.repo}/actions/runs/{int(run_id)}")
-    if run["head_sha"] != commit or run["head_branch"] != "main" or run["status"] != "completed" or run["conclusion"] != "success" \
+def verify_run(api, run_id, commit, attempt=None):
+    endpoint = f"repos/{api.repo}/actions/runs/{int(run_id)}"
+    if attempt is not None:
+        endpoint += f"/attempts/{int(attempt)}"
+    run = api.call(endpoint)
+    if run["head_sha"] != commit or run["head_branch"] != "main" or run["status"] != "completed" \
             or run["head_repository"]["full_name"] != api.repo or run["repository"]["full_name"] != api.repo \
             or run["head_repository"]["id"] != run["repository"]["id"] or run["path"].split("@", 1)[0] != WORKFLOW \
             or run["event"] not in {"push", "workflow_dispatch"}:
@@ -253,6 +269,11 @@ def verify_run(api, run_id, commit):
     workflow = api.call(f"repos/{api.repo}/actions/workflows/build.yml")
     if run["workflow_id"] != workflow["id"]:
         raise ValueError("Unexpected workflow identity")
+    if run["conclusion"] != "success":
+        jobs = api.call(f"repos/{api.repo}/actions/runs/{int(run_id)}/attempts/{run['run_attempt']}/jobs?per_page=100")["jobs"]
+        builds = [j for j in jobs if j["name"] == "build"]
+        if len(builds) != 1 or builds[0]["conclusion"] != "success":
+            raise ValueError("The original build job did not complete successfully")
     return run
 
 
@@ -367,20 +388,23 @@ def main():
             publish_requested = os.environ.get("PUBLISH_REQUESTED") == "true"
             target = args.sha
             artifact_id = ""
+            recovery_attempt = None
+            # Re-running all jobs must reuse the original successful build, not replace a draft's bytes.
+            if not source_run and int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")) > 1:
+                artifacts = api.call(f"repos/{api.repo}/actions/runs/{args.run_id}/artifacts?per_page=100")["artifacts"]
+                prefix = f"plugin-{target}-"
+                attempts = sorted(int(a["name"][len(prefix):]) for a in artifacts if a["name"].startswith(prefix)
+                                  and a["name"][len(prefix):].isdigit() and not a["expired"])
+                if attempts:
+                    source_run = args.run_id
+                    recovery_attempt = attempts[0]
             if source_run:
-                if not publish_requested or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch" or not re.fullmatch(r"[0-9]+", source_run) \
-                        or not re.fullmatch(r"[0-9a-f]{64}", os.environ.get("EXPECTED_SHA256", "")):
+                if recovery_attempt is None and (not publish_requested or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch" or not re.fullmatch(r"[0-9]+", source_run) \
+                        or not re.fullmatch(r"[0-9a-f]{64}", os.environ.get("EXPECTED_SHA256", ""))):
                     raise ValueError("Bootstrap requires explicit main dispatch, source run and validated SHA-256")
                 run = api.call(f"repos/{api.repo}/actions/runs/{source_run}")
                 target = run["head_sha"]
-                run = verify_run(api, source_run, target)
-                artifacts = api.call(f"repos/{api.repo}/actions/runs/{source_run}/artifacts?per_page=100")["artifacts"]
-                name = f"plugin-{target}-{run['run_attempt']}"
-                matching = [a for a in artifacts if a["name"] == name and not a["expired"] and a["workflow_run"]["id"] == int(source_run)
-                            and a["workflow_run"]["head_sha"] == target and a["workflow_run"]["repository_id"] == run["repository"]["id"]]
-                if len(matching) != 1:
-                    raise ValueError("Expected one original, unexpired artifact from this successful run attempt")
-                artifact_id = str(matching[0]["id"])
+                artifact_id = str(source_artifact(api, source_run, target, recovery_attempt)["id"])
                 if not ancestor(target, args.sha):
                     raise ValueError("Source build is not an ancestor of current main")
                 paths = changed_paths(target, args.sha)
@@ -396,7 +420,7 @@ def main():
             manifest = verify_files(args.directory)
             # Current-run builds are still running; prior-run bootstrap artifacts must be successful.
             if str(manifest["run_id"]) != args.run_id:
-                verify_run(api, manifest["run_id"], manifest["commit"])
+                verify_run(api, manifest["run_id"], manifest["commit"], manifest["run_attempt"])
             if manifest["commit"] != args.sha:
                 raise ValueError("Release does not match the selected build commit")
             publish(api, args.directory)

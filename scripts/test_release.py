@@ -228,6 +228,77 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             release.decide(self.api, target)
 
+    def test_document_packaged_as_resource_is_not_exempt(self):
+        self.baseline()
+        target = self.commit({"src/main/resources/help.md": "included in the plugin"})
+        with self.assertRaises(ValueError):
+            release.decide(self.api, target)
+
+    def test_docs_after_gate_enable_are_still_not_a_new_release(self):
+        self.baseline()
+        self.commit({".github/release-policy.json": '{"automatic":true}'})
+        target = self.commit({"README.md": "document verified release"})
+        self.assertFalse(release.decide(self.api, target)[1])
+
+    def test_version_rollback_before_failed_release_is_rejected(self):
+        self.baseline()
+        self.commit({"gradle.properties": "pluginVersion=0.3.9\n"})
+        target = self.commit({"gradle.properties": "pluginVersion=0.3.8\n"})
+        with self.assertRaises(ValueError):
+            release.decide(self.api, target)
+
+    def trusted_source(self):
+        repository = dict(id=123, full_name=self.api.repo)
+        run = dict(head_sha="a" * 40, head_branch="main", status="completed", conclusion="success", repository=repository,
+                   head_repository=repository, workflow_id=42, path=release.WORKFLOW, event="push", run_attempt=1)
+        artifact = dict(id=11, name=f"plugin-{'a' * 40}-1", expired=False,
+                        workflow_run=dict(id=101, head_sha="a" * 40, repository_id=123))
+        def call(path):
+            if path.endswith("artifacts?per_page=100"):
+                return {"artifacts": [artifact]}
+            if path.endswith("workflows/build.yml"):
+                return {"id": 42}
+            if path.endswith("jobs?per_page=100"):
+                return {"jobs": [{"name": "build", "conclusion": run["conclusion"]}]}
+            return run
+        self.api.call = call
+        return run, artifact
+
+    def test_bootstrap_pins_artifact_id_from_successful_main_attempt(self):
+        self.trusted_source()
+        self.assertEqual(release.source_artifact(self.api, "101", "a" * 40)["id"], 11)
+
+    def test_bootstrap_rejects_failed_or_foreign_run(self):
+        run, _ = self.trusted_source()
+        run["conclusion"] = "failure"
+        with self.assertRaises(ValueError):
+            release.source_artifact(self.api, "101", "a" * 40)
+        run["conclusion"] = "success"
+        run["head_repository"] = dict(id=456, full_name="fork/project")
+        with self.assertRaises(ValueError):
+            release.source_artifact(self.api, "101", "a" * 40)
+
+    def test_bootstrap_rejects_expired_or_wrong_attempt_artifact(self):
+        _, artifact = self.trusted_source()
+        artifact["expired"] = True
+        with self.assertRaises(ValueError):
+            release.source_artifact(self.api, "101", "a" * 40)
+        artifact["expired"] = False
+        artifact["name"] = f"plugin-{'a' * 40}-2"
+        with self.assertRaises(ValueError):
+            release.source_artifact(self.api, "101", "a" * 40)
+
+    def test_successful_build_is_recoverable_after_publish_failure(self):
+        run, _ = self.trusted_source()
+        original = self.api.call
+        run["conclusion"] = "failure"
+        def call(path):
+            if path.endswith("jobs?per_page=100"):
+                return {"jobs": [{"name": "build", "conclusion": "success"}, {"name": "publish", "conclusion": "failure"}]}
+            return original(path)
+        self.api.call = call
+        self.assertEqual(release.source_artifact(self.api, "101", "a" * 40, 1)["id"], 11)
+
 
 if __name__ == "__main__":
     unittest.main()
