@@ -78,7 +78,7 @@ jobs:
           merge-multiple: true
       - name: Verify package and original evidence
         env:
-          EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+          EXPECTED_SHA256: ${{ steps.plan.outputs.digest }}
         run: python scripts/release.py verify --sha '${{ steps.plan.outputs.sha }}'
       - uses: actions/upload-artifact@v4
         id: artifact

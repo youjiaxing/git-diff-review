@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import stat
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -253,14 +254,17 @@ class ReleaseTests(unittest.TestCase):
                    head_repository=repository, workflow_id=42, path=release.WORKFLOW, event="push", run_attempt=1)
         artifact = dict(id=11, name=f"plugin-{'a' * 40}-1", expired=False,
                         workflow_run=dict(id=101, head_sha="a" * 40, repository_id=123))
-        def call(path):
+        original_call = self.api.call
+        def call(path, *args, **kwargs):
             if path.endswith("artifacts?per_page=100"):
                 return {"artifacts": [artifact]}
             if path.endswith("workflows/build.yml"):
                 return {"id": 42}
             if path.endswith("jobs?per_page=100"):
                 return {"jobs": [{"name": "build", "conclusion": run["conclusion"]}]}
-            return run
+            if "/actions/runs/" in path:
+                return run
+            return original_call(path, *args, **kwargs)
         self.api.call = call
         return run, artifact
 
@@ -298,6 +302,57 @@ class ReleaseTests(unittest.TestCase):
             return original(path)
         self.api.call = call
         self.assertEqual(release.source_artifact(self.api, "101", "a" * 40, 1)["id"], 11)
+
+    def receipt_fixture(self):
+        release.git("init", "-q", "--initial-branch=main")
+        first = self.commit({".gitignore": "dist/\n", ".github/release-policy.json": '{"automatic":false}', "src/main/example.java": "production"})
+        run, artifact = self.trusted_source()
+        run["head_sha"] = first
+        artifact["name"] = f"plugin-{first}-1"
+        artifact["workflow_run"]["head_sha"] = first
+        receipt = dict(schema=1, repository=self.api.repo, validation="isolated-goland-262-pass", version="0.3.7", commit=first,
+                       run_id=101, artifact_id=11, sha256=self.manifest["sha256"])
+        target = self.commit({".github/release-policy.json": '{"automatic":true}', "docs/release-bootstrap.json": json.dumps(receipt)})
+        return first, target, receipt
+
+    def run_plan(self, target):
+        with patch.dict(os.environ, dict(GITHUB_REF="refs/heads/main", GITHUB_SHA=target, GITHUB_RUN_ID="999", GITHUB_REPOSITORY=self.api.repo,
+                                        GITHUB_RUN_ATTEMPT="1", GITHUB_EVENT_NAME="push", SOURCE_RUN_ID="", PUBLISH_REQUESTED="false", EXPECTED_SHA256="", GITHUB_OUTPUT=str(self.root / "output"))), \
+                patch.object(release, "Api", return_value=self.api), patch.object(sys, "argv", ["release.py", "plan"]):
+            release.main()
+        return dict(line.split("=", 1) for line in Path("output").read_text().splitlines())
+
+    def test_verified_push_receipt_reuses_the_original_build(self):
+        first, target, receipt = self.receipt_fixture()
+        result = self.run_plan(target)
+        self.assertEqual(result["sha"], first)
+        self.assertEqual(result["artifact_id"], "11")
+        self.assertEqual(result["source_run"], "101")
+        self.assertEqual(result["digest"], receipt["sha256"])
+        self.assertEqual(result["publish"], "true")
+        self.assertEqual(self.api.mutations, [])
+
+    def test_receipt_cannot_substitute_a_different_commit(self):
+        _, target, receipt = self.receipt_fixture()
+        receipt["commit"] = "b" * 40
+        Path("docs/release-bootstrap.json").write_text(json.dumps(receipt))
+        with self.assertRaises(ValueError):
+            self.run_plan(target)
+
+    def test_receipt_cannot_bypass_new_package_changes(self):
+        _, _, receipt = self.receipt_fixture()
+        target = self.commit({"src/main/example.java": "not validated"})
+        with self.assertRaises(ValueError):
+            self.run_plan(target)
+
+    def test_published_version_no_longer_requires_old_bootstrap_artifact(self):
+        first, target, _ = self.receipt_fixture()
+        original = dict(self.manifest, commit=first)
+        self.api.tags["v0.3.7"] = first
+        self.api.items.append(dict(id=1, tag_name="v0.3.7", body=release.MARKER + json.dumps(original) + "\n-->", draft=False, prerelease=False))
+        result = self.run_plan(target)
+        self.assertEqual(result["source_run"], "")
+        self.assertEqual(result["publish"], "false")
 
 
 if __name__ == "__main__":

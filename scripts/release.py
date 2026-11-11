@@ -386,8 +386,23 @@ def main():
                 return
             source_run = os.environ.get("SOURCE_RUN_ID", "")
             publish_requested = os.environ.get("PUBLISH_REQUESTED") == "true"
+            policy = json.loads(Path(".github/release-policy.json").read_text())
             target = args.sha
             artifact_id = ""
+            digest = os.environ.get("EXPECTED_SHA256", "")
+            receipt = None
+            receipt_path = Path("docs/release-bootstrap.json")
+            if policy["automatic"] and not source_run and receipt_path.exists():
+                recorded = json.loads(receipt_path.read_text(encoding="utf-8"))
+                current = properties(git("show", f"{target}:gradle.properties"))
+                published = [ownership(r) for r in api.releases() if not r["draft"] and not r["prerelease"]]
+                if recorded["version"] == current and not any(m and m["version"] == current for m in published):
+                    if recorded["repository"] != api.repo or recorded["validation"] != "isolated-goland-262-pass" or recorded["schema"] != 1:
+                        raise ValueError("Invalid first-release validation receipt")
+                    receipt = recorded
+                    source_run = str(recorded["run_id"])
+                    digest = recorded["sha256"]
+                    publish_requested = True
             recovery_attempt = None
             # Re-running all jobs must reuse the original successful build, not replace a draft's bytes.
             if not source_run and int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")) > 1:
@@ -399,12 +414,14 @@ def main():
                     source_run = args.run_id
                     recovery_attempt = attempts[0]
             if source_run:
-                if recovery_attempt is None and (not publish_requested or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch" or not re.fullmatch(r"[0-9]+", source_run) \
-                        or not re.fullmatch(r"[0-9a-f]{64}", os.environ.get("EXPECTED_SHA256", ""))):
+                if recovery_attempt is None and (not publish_requested or receipt is None and os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+                        or not re.fullmatch(r"[0-9]+", source_run) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
                     raise ValueError("Bootstrap requires explicit main dispatch, source run and validated SHA-256")
                 run = api.call(f"repos/{api.repo}/actions/runs/{source_run}")
                 target = run["head_sha"]
                 artifact_id = str(source_artifact(api, source_run, target, recovery_attempt)["id"])
+                if receipt is not None and (receipt["commit"] != target or str(receipt["artifact_id"]) != artifact_id):
+                    raise ValueError("Validation receipt does not identify the original build artifact")
                 if not ancestor(target, args.sha):
                     raise ValueError("Source build is not an ancestor of current main")
                 paths = changed_paths(target, args.sha)
@@ -413,9 +430,8 @@ def main():
             elif publish_requested:
                 raise ValueError("Manual publication requires the exact previously validated source artifact")
             current, needed, reason = decide(api, target)
-            policy = json.loads(Path(".github/release-policy.json").read_text())
             output(publish=str(needed and (policy["automatic"] or publish_requested)).lower(), version=current, sha=target,
-                   source_run=source_run, artifact_id=artifact_id, reason=reason)
+                   source_run=source_run, artifact_id=artifact_id, digest=digest, reason=reason)
         elif args.command == "publish":
             manifest = verify_files(args.directory)
             # Current-run builds are still running; prior-run bootstrap artifacts must be successful.
