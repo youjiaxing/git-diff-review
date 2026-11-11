@@ -36,6 +36,8 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
     private volatile int step;
     private int ticks;
     private int passed;
+    private final java.util.Set<String> checkedLabels = new java.util.HashSet<>();
+    private SelectionUxChecks selectionUx;
     private boolean busy;
     private final java.util.concurrent.atomic.AtomicInteger scheduledTicks = new java.util.concurrent.atomic.AtomicInteger();
     private int receivedTicks;
@@ -107,7 +109,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
         });
     }
 
-    private void tick() {
+    private void tick() throws Exception {
         if (ticks % 15 == 0 && stage != null) {
             var current = stage.getCurrentChange();
             log("WAIT step=" + step + " change=" + (current == null ? null : current.getUserObject())
@@ -120,6 +122,8 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
                 if (ticks % 15 == 0) log("WAIT no Commit toolwindow; windows=" + java.util.Arrays.toString(ToolWindowManager.getInstance(project).getToolWindowIds()));
                 return;
             }
+            if (selectionUx == null) selectionUx = new SelectionUxChecks(project, this::check);
+            if (!selectionUx.tick()) return;
             if (newFileReview == null) newFileReview = new NewFileReviewChecks(project, this::check);
             if (!newFileReview.tick()) return;
             if (compareMenu == null) compareMenu = new CompareMenuChecks(project, this::check);
@@ -441,6 +445,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
     }
     private void check(boolean value, String label) {
         if (!value) throw new AssertionError(label);
+        if (!checkedLabels.add(label)) return;
         passed++;
         log("OK " + label);
     }

@@ -49,7 +49,7 @@ final class NewFileReviewChecks {
             if (stage == null || !(stage.getActiveViewer() instanceof OnesideTextDiffViewer one) || one.hasPendingRediff()) return false;
             check.accept(node().getKind() == NodeKind.UNTRACKED && node().getFilePath().getName().equals("review-new.txt"), "untracked source menu opens native empty-to-local Commit preview");
             check.accept(git("ls-files", "--", "review-new.txt").isEmpty(), "opening new-file comparison creates no index entry");
-            select(one.getEditor(), "second"); invoke("DiffNavigation.SelectedLines", one.getEditor());
+            select(one.getEditor(), "second"); if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", one.getEditor())) return false;
             check.accept(!stageActionEnabled(one.getEditor()), "old selection cannot Stage again while write and baseline refresh are pending");
             next();
         } else if (step == 4) {
@@ -57,7 +57,7 @@ final class NewFileReviewChecks {
             if (!ready("second\n")) return false;
             check.accept(true, "partial Stage automatically replaces untracked preview with INDEX-to-local diff");
             check.accept(two().getEditor2().getDocument().getText().equals("first\nsecond\nthird\nfourth\n"), "partial Stage retains full local file in right side");
-            select(two().getEditor2(), "third"); invoke("DiffNavigation.SelectedLines", two().getEditor2()); next();
+            select(two().getEditor2(), "third"); if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", two().getEditor2())) return false; next();
         } else if (step == 5) {
             if (!git("show", ":review-new.txt").equals("second\nthird\n") || !ready("second\nthird\n")) return false;
             check.accept(true, "consecutive Stage refreshes the same unstaged group to latest index");
@@ -77,76 +77,65 @@ final class NewFileReviewChecks {
             if (!(stage.getActiveViewer() instanceof OnesideTextDiffViewer one) || one.hasPendingRediff()
                     || !node().getFilePath().getName().equals("review-cancel.txt")) return false;
             check.accept(true, "explicit untracked menu works with automatic new-file navigation and review start disabled");
-            select(one.getEditor(), "beta"); invoke("DiffNavigation.SelectedLines", one.getEditor());
+            select(one.getEditor(), "beta"); if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", one.getEditor())) return false;
             open("clean.go"); next();
         } else if (step == 9) {
-            if (!git("show", ":review-cancel.txt").equals("beta\n") || waits < 10) return false;
-            check.accept(manager.getSelectedTextEditor() != null && FileDocumentManager.getInstance().getFile(manager.getSelectedTextEditor().getDocument()).getName().equals("clean.go"), "Stage refresh does not return focus after user leaves preview");
+            if (waits < 15) return false;
+            check.accept(git("show", ":review-cancel.txt").isEmpty(), "leaving preview before deferred Stage cancels the index write");
+            check.accept(manager.getSelectedTextEditor() != null && FileDocumentManager.getInstance().getFile(manager.getSelectedTextEditor().getDocument()).getName().equals("clean.go"), "canceled Stage does not return focus to preview");
             open("review-cancel.txt"); next();
         } else if (step == 10) {
             invoke("Git.Stage.Compare.Local.Staged", manager.getSelectedTextEditor()); next();
         } else if (step == 11) {
-            if (!(stage.getActiveViewer() instanceof TwosideTextDiffViewer view) || view.hasPendingRediff()
-                    || !node().getFilePath().getName().equals("review-cancel.txt") || !view.getEditor1().getDocument().getText().equals("beta\n")) return false;
-            select(view.getEditor2(), "gamma");
-            invoke("DiffNavigation.SelectedLines", view.getEditor2());
+            if (!(stage.getActiveViewer() instanceof OnesideTextDiffViewer view) || view.hasPendingRediff() || !node().getFilePath().getName().equals("review-cancel.txt")) return false;
+            select(view.getEditor(), "beta"); if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", view.getEditor())) return false;
+            next();
+        } else if (step == 12) {
+            if (!(stage.getActiveViewer() instanceof TwosideTextDiffViewer view) || view.hasPendingRediff() || !view.getEditor1().getDocument().getText().equals("beta\n")) return false;
+            select(view.getEditor2(), "gamma"); if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", view.getEditor2())) return false;
             var previewFile = com.intellij.openapi.fileEditor.ex.FileEditorManagerEx.getInstanceEx(project).getCurrentWindow().getSelectedFile();
             open("clean.go");
             com.intellij.openapi.fileEditor.ex.FileEditorManagerEx.getInstanceEx(project).getCurrentWindow().setSelectedComposite(previewFile, true);
             next();
-        } else if (step == 12) {
-            if (!git("show", ":review-cancel.txt").equals("beta\ngamma\n") || waits < 10) return false;
-            check.accept(manager.getSelectedTextEditor() == null, "switch away and back does not resurrect canceled refresh navigation");
-            // Reopen explicitly; cancellation must not leave a permanent block on a new viewer.
-            open("review-cancel.txt"); next();
         } else if (step == 13) {
-            invoke("Git.Stage.Compare.Local.Staged", manager.getSelectedTextEditor()); next();
+            if (waits < 15) return false;
+            check.accept(git("show", ":review-cancel.txt").equals("beta\n"), "switch away and back cannot resurrect an old Stage candidate");
+            open("review-cancel.txt"); next();
         } else if (step == 14) {
-            if (!(stage.getActiveViewer() instanceof TwosideTextDiffViewer view) || view.hasPendingRediff()
-                    || !view.getEditor1().getDocument().getText().equals("beta\ngamma\n")) return false;
-            select(view.getEditor2(), "alpha");
-            var action = ActionManager.getInstance().getAction("DiffNavigation.SelectedLines");
-            var event = AnActionEvent.createFromAnAction(action, null, "DiffNavSmoke", context(view.getEditor2()));
-            action.update(event);
-            check.accept(event.getPresentation().isEnabled(), "explicitly reopened latest diff permits staging again after canceled refresh");
-            invoke("DiffNavigation.SelectedLines", view.getEditor2());
+            invoke("Git.Stage.Compare.Local.Staged", manager.getSelectedTextEditor()); next();
+        } else if (step == 15) {
+            if (!(stage.getActiveViewer() instanceof TwosideTextDiffViewer view) || view.hasPendingRediff() || !view.getEditor1().getDocument().getText().equals("beta\n")) return false;
+            select(view.getEditor2(), "gamma"); if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", view.getEditor2())) return false;
             var tree = stage.getStageTree();
             var key = new java.awt.event.KeyEvent(tree, java.awt.event.KeyEvent.KEY_PRESSED, System.currentTimeMillis(), 0,
                     java.awt.event.KeyEvent.VK_DOWN, java.awt.event.KeyEvent.CHAR_UNDEFINED);
             for (var listener : tree.getKeyListeners()) listener.keyPressed(key);
             next();
-        } else if (step == 15) {
-            if (!git("show", ":review-cancel.txt").equals("alpha\nbeta\ngamma\n") || waits < 10) return false;
-            var tree = stage.getStageTree();
-            var other = GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(tree).find(w ->
-                    w.getFilePath().getName().equals("main.go") && ((GitFileStatusNode) w.getUserObject()).getKind() == NodeKind.UNSTAGED);
-            GitStageDiffPreviewHandler.INSTANCE.selectChange(tree, other);
-            next();
         } else if (step == 16) {
-            if (waits < 5) return false;
-            check.accept(stage.getStageTree().selectedStatusNodes().single().getFilePath().getName().equals("main.go"),
-                    "manual Commit selection made during Stage is not overwritten by delayed refresh");
-            open("review-race.txt"); next();
-        } else if (step == 17) {
-            invoke("Git.Stage.Compare.Local.Staged", manager.getSelectedTextEditor()); next();
-        } else if (step == 18) {
-            if (!(stage.getActiveViewer() instanceof OnesideTextDiffViewer one) || one.hasPendingRediff()
-                    || !node().getFilePath().getName().equals("review-race.txt")) return false;
-            select(one.getEditor(), "two"); invoke("DiffNavigation.SelectedLines", one.getEditor());
+            if (waits < 15) return false;
             var tree = stage.getStageTree();
-            var other = GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(tree).find(w ->
-                    w.getFilePath().getName().equals("main.go") && ((GitFileStatusNode) w.getUserObject()).getKind() == NodeKind.UNSTAGED);
-            GitStageDiffPreviewHandler.INSTANCE.selectChange(tree, other); stage.setCurrentChange(other);
-            next();
+            var other = GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(tree).find(w -> w.getFilePath().getName().equals("main.go") && ((GitFileStatusNode) w.getUserObject()).getKind() == NodeKind.UNSTAGED);
+            GitStageDiffPreviewHandler.INSTANCE.selectChange(tree, other); next();
+        } else if (step == 17) {
+            if (waits < 5) return false;
+            check.accept(stage.getStageTree().selectedStatusNodes().single().getFilePath().getName().equals("main.go"), "manual Commit selection during Stage is not overwritten");
+            open("review-race.txt"); next();
+        } else if (step == 18) {
+            invoke("Git.Stage.Compare.Local.Staged", manager.getSelectedTextEditor()); next();
         } else if (step == 19) {
-            if (waits < 10) return false;
-            check.accept(node().getFilePath().getName().equals("main.go"), "switching preview during Stage cancels stale work without a blocking information dialog");
+            if (!(stage.getActiveViewer() instanceof OnesideTextDiffViewer one) || one.hasPendingRediff() || !node().getFilePath().getName().equals("review-race.txt")) return false;
+            select(one.getEditor(), "two"); if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", one.getEditor())) return false;
+            var tree = stage.getStageTree();
+            var other = GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(tree).find(w -> w.getFilePath().getName().equals("main.go") && ((GitFileStatusNode) w.getUserObject()).getKind() == NodeKind.UNSTAGED);
+            GitStageDiffPreviewHandler.INSTANCE.selectChange(tree, other); stage.setCurrentChange(other); next();
+        } else if (step == 20) {
+            if (waits < 15) return false;
+            check.accept(node().getFilePath().getName().equals("main.go"), "switching preview cancels obsolete Stage without a blocking dialog");
             NavigationSettings.get(project).getState().autoStart = true;
             NavigationSettings.get(project).getState().openNewFilesInDiff = true;
             project.getService(io.github.youjiaxing.diffnav.StageNavigationService.class).settingsChanged();
             for (var file : manager.getOpenFiles()) manager.closeFile(file);
-            step = 100;
-            return true;
+            step = 100; return true;
         }
         return false;
     }

@@ -17,6 +17,9 @@ public final class GitIndexTransactionTest {
             Files.writeString(root.resolve("other.txt"), "already staged\n"); git(root, "add", "other.txt");
             var tx = new GitIndexTransaction("git");
             var snapshot = tx.capture(root, "a.txt", StandardCharsets.UTF_8);
+            byte[] unchangedIndex = Files.readAllBytes(snapshot.index());
+            tx.verify(snapshot);
+            check(Arrays.equals(unchangedIndex, Files.readAllBytes(snapshot.index())) && !Files.exists(snapshot.index().resolveSibling("index.lock")), "Discard baseline verification neither writes INDEX nor creates a lock");
             tx.commit(snapshot, "A\nb\n", true, () -> true);
             check(git(root, "show", ":a.txt").equals("A\nb\n"), "selected contents staged");
             check(Files.readString(root.resolve("a.txt")).equals("A\nB\n"), "worktree untouched");
@@ -24,6 +27,7 @@ public final class GitIndexTransactionTest {
             snapshot = tx.capture(root, "a.txt", StandardCharsets.UTF_8);
             git(root, "add", "a.txt");
             var stale = snapshot;
+            reject(() -> tx.verify(stale), "read-only verification rejects concurrent index change");
             reject(() -> tx.commit(stale, "wrong\n", true, () -> true), "concurrent index change rejected");
             check(git(root, "show", ":a.txt").equals("A\nB\n"), "external staged contents preserved");
             check(!Files.exists(snapshot.index().resolveSibling("index.lock")), "own lock removed on failure");
@@ -73,6 +77,12 @@ public final class GitIndexTransactionTest {
             check(crlf.staged().text().equals("甲\n乙\n"), "CRLF normalized for diff plan");
             tx.commit(crlf, "甲\n新\n", true, () -> true);
             check(git(root, "show", ":line ending.txt").equals("甲\n新\n"), "Git clean filters and UTF-8 preserved");
+            Path unborn = Files.createDirectory(root.resolve("unborn")); git(unborn, "init", "-q");
+            Files.writeString(unborn.resolve("first.txt"), "first\n");
+            var initial = tx.capture(unborn, "first.txt", StandardCharsets.UTF_8);
+            check(initial.head().isEmpty() && initial.committed() == null, "valid unborn HEAD remains supported");
+            Files.writeString(unborn.resolve(".git/HEAD"), "invalid HEAD\n");
+            reject(() -> tx.capture(unborn, "first.txt", StandardCharsets.UTF_8), "invalid HEAD is not treated as an empty baseline");
             System.out.println("GitIndexTransactionTest: " + passed + " real Git checks passed");
         } finally {
             try (var paths = Files.walk(root)) { for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {

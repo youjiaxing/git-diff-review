@@ -27,7 +27,8 @@ public final class ReviewActionListener implements AnActionListener {
         var context = event.getDataContext();
         var compare = project.getService(SourceCompareService.class);
         compare.cancel();
-        project.getService(StageRefreshService.class).userIntent();
+        if (!"DiffNavigation.SelectedLines".equals(id) && !"DiffNavigation.DiscardSelectedLines".equals(id))
+            project.getService(StageRefreshService.class).userIntent();
         Runnable explicit = "Git.Stage.Compare.Local.Staged".equals(id)
                 ? compare.prepare(context, () -> nativeFallback(action, event)) : null;
         BooleanSupplier navigate = direction != 0 && service.prepareTravel(context, direction) ? () -> service.travel(context, direction)

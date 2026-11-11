@@ -29,6 +29,20 @@ public final class SelectedLinesTest {
         check(!SelectedLines.apply("a", true, "", false, List.of(new SelectedLines.Change(0, 1, 0, 1)), false, 0, 1).exists(), "SDK virtual empty line supports deletion without newline");
         check(SelectedLines.apply("a\n", true, "a", true, List.of(new SelectedLines.Change(1, 2, 1, 1)), false, 0, 1).text().equals("a"), "removing final newline applies to last actual line");
         check(SelectedLines.apply("a", true, "a\n", true, List.of(new SelectedLines.Change(1, 1, 1, 2)), true, 0, 1).text().equals("a\n"), "adding final newline applies to last actual line");
+        var discardAdded = SelectedLines.apply("head\none\ntwo\nanchor\n", true, "head\nanchor\n", true,
+                List.of(new SelectedLines.Change(1, 3, 1, 1)), false, 2, 3);
+        check(discardAdded.text().equals("head\none\nanchor\n") && !discardAdded.needsPreview(), "Discard removes only selected local addition");
+        var restoreDeleted = SelectedLines.apply("head\ntail\n", true, "head\none\ntwo\ntail\n", true,
+                List.of(new SelectedLines.Change(1, 1, 1, 3)), true, 2, 3);
+        check(restoreDeleted.text().equals("head\ntwo\ntail\n"), "Discard from INDEX restores only selected deleted line");
+        var clearNew = SelectedLines.apply("new", true, "", true, List.of(new SelectedLines.Change(0, 1, 0, 1)), false, 0, 1);
+        check(clearNew.text().isEmpty() && clearNew.exists(), "Discard all untracked content retains an empty document");
+        var unstageIndex = SelectedLines.apply("head\nstaged\ntail\n", true, "head\ntail\n", true,
+                List.of(new SelectedLines.Change(1, 2, 1, 1)), false, 1, 2);
+        check(unstageIndex.text().equals("head\ntail\n"), "Unstage INDEX selection compares against HEAD instead of LOCAL");
+        var cross = SelectedLines.apply("one\nkeep\ntwo\nlast\n", true, "keep\nlast\n", true,
+                List.of(new SelectedLines.Change(0, 1, 0, 0), new SelectedLines.Change(2, 3, 1, 1)), false, 0, 3);
+        check(cross.text().equals("keep\nlast\n"), "continuous range can affect two hunks without changing context");
         System.out.println("SelectedLinesTest: " + passed + " checks passed");
     }
     private static void check(boolean value, String label) { if (!value) throw new AssertionError(label); passed++; }

@@ -4,6 +4,19 @@
 
 ## 已完成
 
+### 0.3.6 选区有效动作与 Discard
+
+- 选行操作统一在后台读取 HEAD、INDEX、LOCAL 并生成候选，浮窗、右键和快捷键使用同一份资格结果。INDEX ↔ LOCAL 左侧的 Unstage 单独对照 HEAD；未暂存删除仍可 Stage／Discard，纯上下文无可执行动作。原合并快捷动作遇到 Stage／Unstage 同时有效时明确选择，不执行隐式 Discard。不同侧不能复用旧选区计划，后台动作更新不抢走另一侧的选区归属。
+- Discard 仅修改真实 LOCAL Document，包含未保存编辑，以 INDEX 为基线，不写暂存区、不主动保存、不恢复整份已删除文件。每次独立命名撤销命令，支持原生 Undo／Redo；部分替换先确认只读预览，不能编辑全文扩大范围。纯未跟踪文件清空后保留空文件。已有删除侧 Stage／Unstage 保留。
+- SDK 原生 Undo 依据侧编辑器的 DataContext 工作，不能把整个 DiffFileEditor 或另一个源码标签当作相同上下文。右侧原生 Undo／Redo直接使用平台历史；INDEX 左侧新增窄范围 UndoManagerProvider，仅当当前未暂存双栏的真实 LOCAL 下一项是本插件 Discard 时委托右侧 TextEditor，其他上下文返回 null，不修改 INDEX、不覆盖原生动作。
+- 选区、文档、窗口、请求及导航变化使候选失效，确认后再复核；插件跨预览／项目的写入按 INDEX 路径互斥。Discard 后台只读复核 Git 基线，写命令内复核真实文档；不承诺与外部 Git／编辑器写入的联合原子事务。HEAD 内容按捕获的 OID 读取，合法 unborn HEAD 与读取失败区分；捕获时确认真实仓库根，拒绝损坏的嵌套仓库回落到父仓库。
+- 暂存写入后刷新最新基线；完全 Unstage 新文件会自动回到未跟踪预览。Discard 文档变更、撤销和重做触发原生 rediff，保留可确认的操作侧及位置。取消输入监听随 viewer 重建重新绑定，并覆盖编辑区、滚动容器和滚动条；用户后续输入优先。
+- 精确复现报告 `build/sandbox-selection-red/smoke-report.txt`：旧版在 INDEX 左侧选中已暂存新增行后没有 Unstage。独立实现审查发现的跨侧缓存及新 viewer 输入监听缺口均已修正，并加入对应回归。
+- 最终独立实例 `build/sandbox-selection-v036-final2/smoke-report.txt`：`PASS 189 integration checks`，平台 ERROR／SEVERE 为 0。新增覆盖选区动作及混合选择、左右侧原生撤销／重做、连续独立撤销、未保存文档及未选编辑保留、不自动保存、删除行恢复、纯新文件清空及无末尾换行恢复、歧义 Discard 取消／确认、改选取消、UNSTAGED→UNTRACKED，以及 viewer 更换后的滚动取消；保留此前菜单、导航、历史、删除和连续暂存检查。
+- 测试通过 SDK ActionSystem、真实 Swing 按钮／对话框、编辑器和 UndoManagerProvider 执行。Windows Computer Use 在刷新窗口后两次截图分别返回 `FrameArrived timed out` 和 `window capture timed out`，备用 CUA 同样超时；可访问性仅暴露系统窗口栏。因此未完成实际鼠标拖选及视觉体验验证，不能将自动化通过数视为这部分验证已完成。
+- 本地 SDK 构建检查：15 项历史、19 项选区变换、24 项真实 Git 事务。纯读取复核不创建 index.lock、不修改 INDEX；过期 INDEX、非法 HEAD 与合法 unborn HEAD 均有独立检查。仍仅验证 GoLand 262，源码光标接续到 Diff 不在本版本实施范围。
+- 正式 0.3.6 ZIP 已核对插件 ID、版本、单一生产 JAR、Undo provider 声明及不含 smoke／测试类；本机升级隔离模拟通过。已安排日常 GoLand 下次启动加载 0.3.6，旧版及原队列备份于 `build/install-v036/backup-20261111-122518`；独立测试实例已关闭，日常 IDE 未重启，实际加载待用户确认。
+
 ### 0.3.5 新增文件菜单与连续暂存刷新
 
 - 纯未跟踪文件可通过原有 `Git.Stage.Compare.Local.Staged` 菜单进入同窗口原生“空版本 ↔ 本地”提交预览；打开预览不创建 index 条目。仍保留普通源码资格、原生暂存区可用性和项目启用偏好，其他比较动作不接管，显式入口不受自动导航的新增文件偏好限制。

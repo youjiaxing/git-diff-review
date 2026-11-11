@@ -25,7 +25,7 @@ foreach ($sandboxPlugin in @('goland-diff-navigation', 'git-diff-review')) {
     }
 }
 New-Item -ItemType Directory -Path $fixture,$options,$pluginLib,$testLib -Force | Out-Null
-Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.5.jar" -Destination $pluginLib
+Copy-Item -LiteralPath "$root\build\local\git-diff-review\lib\git-diff-review-0.3.6.jar" -Destination $pluginLib
 $cp = "$IdePath\lib\*;$IdePath\plugins\vcs-git\lib\*;$root\build\local\classes"
 $testClasses = Join-Path $sandbox 'smoke-classes'
 $sources = @(Get-ChildItem -LiteralPath "$root\src\smoke\java" -Filter '*.java' -Recurse | ForEach-Object FullName)
@@ -54,10 +54,17 @@ Set-Content -LiteralPath "$fixture\lines.txt" -Encoding utf8 -Value "head`nancho
 Set-Content -LiteralPath "$fixture\menu.txt" -Encoding utf8 -Value "head`nanchor`ntail"
 Set-Content -LiteralPath "$fixture\replace.txt" -Encoding utf8 -Value "oldOne`noldTwo`ntail"
 Set-Content -LiteralPath "$fixture\deleted.txt" -Encoding utf8 -Value "delOne`ndelTwo"
+[IO.File]::WriteAllText((Join-Path $fixture 'selection.txt'), "head`nanchor`ntail`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $fixture 'selection-replace.txt'), "oldOne`noldTwo`ntail`n", [Text.UTF8Encoding]::new($false))
 & git -C $fixture init --initial-branch=main | Out-Null
 & git -C $fixture -c user.name='Diff Navigation Test' -c user.email='test@example.invalid' add .
 & git -C $fixture -c user.name='Diff Navigation Test' -c user.email='test@example.invalid' commit -qm 'test: sandbox baseline'
 if ($LASTEXITCODE -ne 0) { throw 'Fixture baseline failed.' }
+[IO.File]::WriteAllText((Join-Path $fixture 'selection.txt'), "head`nstaged-one`nanchor`ntail`n", [Text.UTF8Encoding]::new($false))
+& git -C $fixture add selection.txt
+[IO.File]::WriteAllText((Join-Path $fixture 'selection.txt'), "head`nstaged-one`nanchor`nlocal-one`ntail`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $fixture 'selection-new.txt'), "alpha`nbeta`ngamma", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $fixture 'selection-replace.txt'), "newOne`nnewTwo`ntail`n", [Text.UTF8Encoding]::new($false))
 Set-Content -LiteralPath "$fixture\policy\a.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyA() int { return PolicyB() + PolicyC() + 1 }"
 Set-Content -LiteralPath "$fixture\policy\b.go" -Encoding utf8 -Value "package policy`n`nfunc PolicyB() int { return PolicyC() + 1 }"
 & git -C $fixture add policy/b.go

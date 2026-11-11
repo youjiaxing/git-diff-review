@@ -1,7 +1,7 @@
 <idea-plugin>
   <id>io.github.youjiaxing.git-diff-review</id>
   <name>Git Diff Review</name>
-  <version>0.3.5</version>
+  <version>0.3.6</version>
   <vendor url="https://github.com/youjiaxing">youjiaxing</vendor>
   <description><![CDATA[
     <p>Follow code navigation across Git Staging diffs, unchanged source and single usage results.
@@ -12,7 +12,8 @@
     follows their current unstaged state without automatically returning to reviewed changes.</p>
     <p>Navigate through native one-sided diffs for new files. New-file targets open in Diff
     by default; a project preference can open them as source while keeping review history.</p>
-    <p>Stage or unstage selected lines from a floating toolbar. Active source tabs locate
+    <p>Stage, unstage or discard selected changes from a floating toolbar. Discard updates
+    the local editor document with native Undo/Redo and does not force a save. Active source tabs locate
     matching files in the visible Commit tree while preserving manual multi-selection.</p>
     <p>Compare with Staged from a source editor opens the Commit review preview for the
     file's unstaged changes, including selected-line staging, with native comparison fallback.</p>
@@ -30,6 +31,7 @@
     <gotoDeclarationHandler implementation="io.github.youjiaxing.diffnav.IndexDeclarationHandler" order="first"/>
     <diff.DiffExtension implementation="io.github.youjiaxing.diffnav.NavigationDiffExtension"/>
     <actionPromoter implementation="io.github.youjiaxing.diffnav.ReviewHistoryPromoter"/>
+    <undoManagerProvider implementation="io.github.youjiaxing.diffnav.DiscardUndoProvider"/>
     <projectConfigurable parentId="version.control" id="io.github.youjiaxing.diffnav.settings"
                          displayName="Git Diff Review" instance="io.github.youjiaxing.diffnav.NavigationConfigurable"/>
     <statusBarWidgetFactory id="GitDiffReview" implementation="io.github.youjiaxing.diffnav.ReviewStatusWidgetFactory"/>
@@ -42,6 +44,10 @@
     <action id="Git.Stage.Compare.Local.Staged" class="io.github.youjiaxing.diffnav.CompareWithStagedAction" overrides="true"/>
     <action id="DiffNavigation.SelectedLines" class="io.github.youjiaxing.diffnav.StageSelectedLinesAction"
             text="Stage / Unstage 选中行" description="只操作选中的连续行">
+      <add-to-group group-id="Diff.EditorPopupMenu" anchor="first"/>
+    </action>
+    <action id="DiffNavigation.DiscardSelectedLines" class="io.github.youjiaxing.diffnav.DiscardSelectedLinesAction"
+            text="Discard 选中修改" description="撤销选中的未暂存修改，保留暂存内容，可用撤销恢复">
       <add-to-group group-id="Diff.EditorPopupMenu" anchor="first"/>
     </action>
     <action id="DiffNavigation.ToggleReview" class="io.github.youjiaxing.diffnav.ToggleReviewAction"

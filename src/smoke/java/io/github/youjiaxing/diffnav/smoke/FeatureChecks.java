@@ -39,7 +39,7 @@ final class FeatureChecks {
             if (!at("lines.txt", NodeKind.UNSTAGED)) return false;
             Editor right = two().getEditor2();
             selectLine(right, "two");
-            floatingStage(right);
+            if (!floatingStage(right)) return false;
             step++;
         } else if (step == 2) {
             if (!index().equals("head\ntwo\nanchor\ntail\n")) return false;
@@ -50,7 +50,7 @@ final class FeatureChecks {
         } else if (step == 3) {
             if (!at("lines.txt", NodeKind.STAGED) || !two().getEditor2().getDocument().getText().contains("two\n")) return false;
             selectLine(two().getEditor2(), "two");
-            invoke("DiffNavigation.SelectedLines", two().getEditor2()); step++;
+            if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", two().getEditor2())) return false; step++;
         } else if (step == 4) {
             if (!index().equals("head\nanchor\ntail\n")) return false;
             check.accept(true, "UI unstages selected line without changing worktree");
@@ -98,13 +98,15 @@ final class FeatureChecks {
         } else if (step == 11) {
             if (!at("replace.txt", NodeKind.UNSTAGED)) return false;
             selectLine(two().getEditor2(), "newOneLong");
+            if (!SelectionUxChecks.enabled(two().getEditor2(), "DiffNavigation.SelectedLines")) return false;
             watchPreview(false);
-            invoke("DiffNavigation.SelectedLines", two().getEditor2()); step++;
+            if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", two().getEditor2())) return false; step++;
         } else if (step == 12) {
             if (!dialogDone) return false;
             check.accept(readIndex("replace.txt").equals("oldOne\noldTwo\ntail\n"), "canceling ambiguous replacement preview leaves index untouched");
+            if (!SelectionUxChecks.enabled(two().getEditor2(), "DiffNavigation.SelectedLines")) return false;
             watchPreview(true);
-            invoke("DiffNavigation.SelectedLines", two().getEditor2()); step++;
+            if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", two().getEditor2())) return false; step++;
         } else if (step == 13) {
             if (!dialogDone || !readIndex("replace.txt").equals("newOneLong\noldTwo\ntail\n")) return false;
             check.accept(true, "confirming replacement preview stages only the reviewed result");
@@ -114,7 +116,7 @@ final class FeatureChecks {
             if (!atAny("new-no-eol.txt", NodeKind.UNTRACKED)) return false;
             Editor editor = activeEditor();
             editor.getSelectionModel().setSelection(0, editor.getDocument().getTextLength());
-            invoke("DiffNavigation.SelectedLines", editor); step++;
+            if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", editor)) return false; step++;
         } else if (step == 15) {
             if (wrapper("new-no-eol.txt", NodeKind.STAGED) == null || !readIndex("new-no-eol.txt").equals("newOnly")) return false;
             check.accept(true, "new file without final newline stages from native one-sided viewer");
@@ -123,14 +125,14 @@ final class FeatureChecks {
             if (!atAny("new-no-eol.txt", NodeKind.STAGED)) return false;
             Editor editor = activeEditor();
             editor.getSelectionModel().setSelection(0, editor.getDocument().getTextLength());
-            invoke("DiffNavigation.SelectedLines", editor); step++;
+            if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", editor)) return false; step++;
         } else if (step == 17) {
             if (!missingIndex("new-no-eol.txt")) return false;
             check.accept(java.nio.file.Files.readString(Path.of(project.getBasePath(), "new-no-eol.txt")).equals("newOnly"), "Unstage last new-file line removes index entry and preserves local file");
             selectDiff("deleted.txt", NodeKind.UNSTAGED); step++;
         } else if (step == 18) {
             if (!atAny("deleted.txt", NodeKind.UNSTAGED)) return false;
-            selectLine(activeEditor(), "delOne"); invoke("DiffNavigation.SelectedLines", activeEditor()); step++;
+            selectLine(activeEditor(), "delOne"); if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", activeEditor())) return false; step++;
         } else if (step == 19) {
             if (!readIndex("deleted.txt").equals("delTwo\n")) return false;
             if (wrapper("deleted.txt", NodeKind.STAGED) == null) return false;
@@ -138,7 +140,7 @@ final class FeatureChecks {
             selectDiff("deleted.txt", NodeKind.STAGED); step++;
         } else if (step == 20) {
             if (!atAny("deleted.txt", NodeKind.STAGED)) return false;
-            var left = two().getEditor1(); selectLine(left, "delOne"); invoke("DiffNavigation.SelectedLines", left); step++;
+            var left = two().getEditor1(); selectLine(left, "delOne"); if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", left)) return false; step++;
         } else if (step == 21) {
             if (!readIndex("deleted.txt").equals("delOne\ndelTwo\n")) return false;
             check.accept(!java.nio.file.Files.exists(Path.of(project.getBasePath(), "deleted.txt")), "Unstage selected deletion restores index only");
@@ -174,17 +176,17 @@ final class FeatureChecks {
         }
         return false;
     }
-    private void floatingStage(Editor editor) throws Exception {
+    private boolean floatingStage(Editor editor) throws Exception {
         Class<?> type = Class.forName("io.github.youjiaxing.diffnav.LineStaging");
         var keyField = type.getDeclaredField("CONTROLLER"); keyField.setAccessible(true);
         Object controller = editor.getUserData((com.intellij.openapi.util.Key<?>) keyField.get(null));
         var offer = type.getDeclaredMethod("offer", Editor.class); offer.setAccessible(true); offer.invoke(controller, editor);
         var popupField = type.getDeclaredField("popup"); popupField.setAccessible(true);
         var popup = (com.intellij.openapi.ui.popup.JBPopup) popupField.get(controller);
-        if (popup == null) throw new AssertionError("Selection popup wasn't created");
+        if (popup == null) return false;
         var button = findButton(popup.getContent(), "Stage 选中行");
         check.accept(button != null, "selection floating toolbar exposes Stage selected lines");
-        button.doClick();
+        button.doClick(); return true;
     }
     private void navigateTo(String name, String expression) {
         var file = LocalFileSystem.getInstance().findFileByPath(project.getBasePath() + "/" + name);

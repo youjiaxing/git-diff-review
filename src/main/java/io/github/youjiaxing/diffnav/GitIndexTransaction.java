@@ -20,6 +20,8 @@ public final class GitIndexTransaction {
     public GitIndexTransaction(String git) { this.git = git; }
 
     public Snapshot capture(Path root, String path, Charset charset) throws Exception {
+        Path actualRoot = Path.of(text(run(root, null, null, "rev-parse", "--show-toplevel")).strip()).toRealPath();
+        if (!actualRoot.equals(root.toRealPath())) throw new IOException("Git 仓库根目录已变化，已取消选行操作");
         if (path.isBlank() || path.indexOf('\0') >= 0 || Path.of(path).isAbsolute() || path.startsWith("../")) throw new IOException("无效文件路径");
         Path file = root.resolve(path).normalize();
         if (!file.startsWith(root) || Files.isSymbolicLink(file)) throw new IOException("暂不支持符号链接");
@@ -91,9 +93,12 @@ public final class GitIndexTransaction {
                 || !documentUnchanged.getAsBoolean()) throw new IOException("文件、HEAD 或暂存内容已变化，本次操作已取消，请重新选择");
     }
 
+    /** Read-only final check for a document operation. No index lock or Git write is performed. */
+    public void verify(Snapshot expected) throws Exception { validate(expected, () -> true); }
+
     private Entry entry(Path root, String path, Charset charset, boolean fromHead, String head) throws Exception {
         byte[] listing = fromHead && head.isEmpty() ? new byte[0] : fromHead
-                ? run(root, null, null, "ls-tree", "-z", "HEAD", "--", path)
+                ? run(root, null, null, "ls-tree", "-z", head, "--", path)
                 : run(root, null, null, "ls-files", "--stage", "-z", "--", path);
         if (listing.length == 0) return null;
         String record = text(listing);
@@ -109,8 +114,16 @@ public final class GitIndexTransaction {
     }
 
     private String head(Path root) throws Exception {
-        var result = command(root, null, null, List.of("rev-parse", "--verify", "HEAD"));
-        return result.code == 0 ? text(result.out).strip() : "";
+        var result = command(root, null, null, List.of("rev-parse", "--verify", "--quiet", "HEAD"));
+        if (result.code == 0) return text(result.out).strip();
+        if (result.code == 1) {
+            var reference = command(root, null, null, List.of("symbolic-ref", "--quiet", "HEAD"));
+            if (reference.code == 0) {
+                var exists = command(root, null, null, List.of("show-ref", "--verify", "--quiet", text(reference.out).strip()));
+                if (exists.code == 1) return ""; // A valid unborn branch, not an arbitrary Git failure.
+            }
+        }
+        throw new IOException("无法读取 HEAD，已取消选行操作：" + text(result.error).strip());
     }
     private static byte[] bytesOrEmpty(Path path) throws IOException { return Files.exists(path) ? Files.readAllBytes(path) : new byte[0]; }
     private static String text(byte[] bytes) { return new String(bytes, StandardCharsets.UTF_8); }

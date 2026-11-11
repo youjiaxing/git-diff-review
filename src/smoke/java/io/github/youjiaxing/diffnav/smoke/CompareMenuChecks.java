@@ -69,7 +69,7 @@ final class CompareMenuChecks {
             Editor right = two().getEditor2();
             int start = right.getDocument().getText().indexOf("menuOne");
             right.getSelectionModel().setSelection(start, start + "menuOne\n".length());
-            invoke("DiffNavigation.SelectedLines", right); step++;
+            if (!SelectionUxChecks.invokeWhenReady("DiffNavigation.SelectedLines", right)) return false; step++;
         } else if (step == 3) {
             if (!git("show", ":menu.txt").equals("head\nmenuOne\nanchor\ntail\n")) return false;
             check.accept(true, "source-menu Commit preview stages only selected line");
