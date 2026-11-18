@@ -44,6 +44,11 @@
     <action id="DiffNavigation.SelectedLines" class="io.github.youjiaxing.diffnav.StageSelectedLinesAction"
             text="Stage / Unstage 选中行" description="只操作选中的连续行">
       <add-to-group group-id="Diff.EditorPopupMenu" anchor="first"/>
+      <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+    </action>
+    <action id="DiffNavigation.SourceStagedDiff" class="io.github.youjiaxing.diffnav.SourceStagedDiffAction"
+            text="在 Diff 中选择取消暂存" description="打开 HEAD ↔ INDEX，重新选择要取消暂存的内容，打开本身不写入">
+      <add-to-group group-id="EditorPopupMenu" anchor="first"/>
     </action>
     <action id="DiffNavigation.DiscardSelectedLines" class="io.github.youjiaxing.diffnav.DiscardSelectedLinesAction"
             text="Discard 选中修改" description="撤销选中的未暂存修改，保留暂存内容，可用撤销恢复">

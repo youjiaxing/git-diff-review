@@ -51,4 +51,13 @@ final class StageDiffView {
         if (viewer instanceof TwosideTextDiffViewer two) two.scrollToLine(side, line);
         else ((OnesideTextDiffViewer) viewer).scrollToLine(line);
     }
+    void showLineStart() {
+        // Navigation keeps the symbol caret, but reveals the declaration prefix on both Diff sides.
+        for (var editor : left == null ? java.util.List.of(right) : java.util.List.of(left, right)) {
+            var scrolling = editor.getScrollingModel();
+            scrolling.disableAnimation();
+            try { scrolling.scrollHorizontally(0); }
+            finally { scrolling.enableAnimation(); }
+        }
+    }
 }

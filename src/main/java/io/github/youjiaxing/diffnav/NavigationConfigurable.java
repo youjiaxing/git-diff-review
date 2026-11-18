@@ -14,6 +14,7 @@ public final class NavigationConfigurable implements SearchableConfigurable {
     private JCheckBox enabled;
     private JCheckBox autoStart;
     private JCheckBox openNewFilesInDiff;
+    private JCheckBox sourceStaging;
     private JComboBox<NavigationSettings.TargetScope> scope;
     public NavigationConfigurable(Project project) { this.project = project; }
     @Override public String getId() { return "io.github.youjiaxing.diffnav.settings"; }
@@ -22,9 +23,12 @@ public final class NavigationConfigurable implements SearchableConfigurable {
         enabled = new JCheckBox("启用 Diff 审阅导航");
         autoStart = new JCheckBox("从暂存区 Diff 跳转时自动开始审阅");
         openNewFilesInDiff = new JCheckBox("跳转到新增文件时使用 Diff");
+        sourceStaging = new JCheckBox("普通源码显示暂存状态并支持选行操作");
         scope = new JComboBox<>(NavigationSettings.TargetScope.values());
         JPanel fields = new JPanel(new GridLayout(0, 1, 0, 8));
         fields.add(enabled);
+        fields.add(sourceStaging);
+        fields.add(new JLabel("源码标记：实心＝未暂存，空心＝已暂存，半填充＝已暂存且另有修改（与 IDE 原生一致）。"));
         fields.add(autoStart);
         fields.add(openNewFilesInDiff);
         fields.add(new JLabel("包括未跟踪和部分暂存的新文件；目标还须符合下方比较范围。关闭后打开源码并保留审阅路径。"));
@@ -42,13 +46,14 @@ public final class NavigationConfigurable implements SearchableConfigurable {
         var options = NavigationSettings.get(project).getState();
         return enabled != null && (enabled.isSelected() != options.enabled
                 || autoStart.isSelected() != options.autoStart || openNewFilesInDiff.isSelected() != options.openNewFilesInDiff
-                || scope.getSelectedItem() != options.targetScope);
+                || sourceStaging.isSelected() != options.sourceStaging || scope.getSelectedItem() != options.targetScope);
     }
     @Override public void apply() {
         var options = NavigationSettings.get(project).getState();
         options.enabled = enabled.isSelected();
         options.autoStart = autoStart.isSelected();
         options.openNewFilesInDiff = openNewFilesInDiff.isSelected();
+        options.sourceStaging = sourceStaging.isSelected();
         options.targetScope = (NavigationSettings.TargetScope) scope.getSelectedItem();
         project.getService(StageNavigationService.class).settingsChanged();
     }
@@ -58,7 +63,8 @@ public final class NavigationConfigurable implements SearchableConfigurable {
         enabled.setSelected(options.enabled);
         autoStart.setSelected(options.autoStart);
         openNewFilesInDiff.setSelected(options.openNewFilesInDiff);
+        sourceStaging.setSelected(options.sourceStaging);
         scope.setSelectedItem(options.targetScope);
     }
-    @Override public void disposeUIResources() { enabled = null; autoStart = null; openNewFilesInDiff = null; scope = null; }
+    @Override public void disposeUIResources() { enabled = null; autoStart = null; openNewFilesInDiff = null; sourceStaging = null; scope = null; }
 }

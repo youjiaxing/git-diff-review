@@ -57,6 +57,26 @@ public final class SourceCompareService implements Disposable {
     boolean isPending() { return pending != null; }
 
     Runnable prepare(DataContext context, Runnable fallback) {
+        return prepare(context, fallback, false);
+    }
+
+    void openStaged(Editor editor) {
+        var start = prepare(DataManager.getInstance().getDataContext(editor.getContentComponent()),
+                () -> project.getService(StageNavigationService.class).comparisonFailed("无法打开已暂存 Diff，请从提交面板选择该文件的已暂存项"), true);
+        if (start != null) start.run();
+    }
+
+    void openAt(Editor editor, boolean staged, int sourceLine, int targetLine) {
+        var start = prepare(DataManager.getInstance().getDataContext(editor.getContentComponent()),
+                () -> project.getService(StageNavigationService.class).comparisonFailed("无法打开此处 Diff，请从提交面板选择该文件"),
+                staged, sourceLine, targetLine);
+        if (start != null) start.run();
+    }
+
+    private Runnable prepare(DataContext context, Runnable fallback, boolean staged) {
+        return prepare(context, fallback, staged, -1, -1);
+    }
+    private Runnable prepare(DataContext context, Runnable fallback, boolean staged, int sourceLine, int targetLine) {
         var editor = CommonDataKeys.EDITOR.getData(context);
         var file = CommonDataKeys.VIRTUAL_FILE.getData(context);
         var window = FileEditorManagerEx.getInstanceEx(project).getCurrentWindow();
@@ -67,7 +87,7 @@ public final class SourceCompareService implements Disposable {
                 || window == null || window.isDisposed() || !file.equals(window.getSelectedFile())
                 || window.getSelectedComposite() == null || !(window.getSelectedComposite().getSelectedEditor() instanceof TextEditor text)
                 || text.getEditor() != editor || !git4idea.index.GitStageManagerKt.isStagingAreaAvailable(project)) return null;
-        Request request = new Request(file, editor, window, fallback);
+        Request request = new Request(file, editor, window, fallback, staged, sourceLine, targetLine);
         pending = request;
         // Install cancellation before leaving the action callback, including the deferred-start gap.
         var tool = ToolWindowManager.getInstance(project).getToolWindow("Commit");
@@ -87,6 +107,8 @@ public final class SourceCompareService implements Disposable {
         final EditorWindow window;
         final Runnable fallback;
         final boolean untracked;
+        final boolean staged;
+        final int targetLine;
         final NavigationPosition position;
         final Disposable lifetime = Disposer.newDisposable("Source comparison");
         final Alarm alarm;
@@ -96,11 +118,14 @@ public final class SourceCompareService implements Disposable {
         VirtualFile preview;
         boolean opened;
 
-        Request(VirtualFile file, Editor source, EditorWindow window, Runnable fallback) {
+        Request(VirtualFile file, Editor source, EditorWindow window, Runnable fallback, boolean staged, int sourceLine, int targetLine) {
             this.file = file; this.source = source; this.window = window; this.fallback = fallback;
+            this.staged = staged; this.targetLine = targetLine;
             var status = git4idea.index.GitStageTrackerKt.status(git4idea.index.GitStageTracker.getInstance(project), file);
             untracked = status != null && status.isUntracked();
-            position = NavigationPosition.capture(source.getDocument(), source.getCaretModel().getOffset());
+            int offset = sourceLine < 0 ? source.getCaretModel().getOffset() : source.getDocument().getLineCount() == 0 ? 0
+                    : source.getDocument().getLineStartOffset(Math.min(sourceLine, source.getDocument().getLineCount() - 1));
+            position = NavigationPosition.capture(source.getDocument(), offset);
             Disposer.register(SourceCompareService.this, lifetime);
             Disposer.register(lifetime, position::close);
             alarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD, lifetime);
@@ -148,7 +173,8 @@ public final class SourceCompareService implements Disposable {
             if (SwingUtilities.getWindowAncestor(panel) != SwingUtilities.getWindowAncestor(window.getOwner())) { fail(); return; }
             if (tree.isModelUpdateInProgress()) { retry(); return; }
             Wrapper target = GitStageDiffPreviewHandler.INSTANCE.iterateAllChanges(tree).find(w ->
-                    w.getUserObject() instanceof GitFileStatusNode node && (node.getKind() == NodeKind.UNSTAGED || untracked && node.getKind() == NodeKind.UNTRACKED)
+                    w.getUserObject() instanceof GitFileStatusNode node && (staged ? node.getKind() == NodeKind.STAGED
+                            : node.getKind() == NodeKind.UNSTAGED || untracked && node.getKind() == NodeKind.UNTRACKED)
                             && file.equals(node.getFilePath().getVirtualFile()));
             if (target == null) { retry(); return; }
             if (!supported((GitFileStatusNode) target.getUserObject())) { fail(); return; }
@@ -186,7 +212,8 @@ public final class SourceCompareService implements Disposable {
             if (selected == null || !(selected.getSelectedEditor() instanceof DiffEditorViewerFileEditor diff)
                     || diff.getEditorViewer() != stage) { cancel(); return; }
             Editor editor = view.editor(Side.RIGHT);
-            int offset = position.resolve(editor.getDocument());
+            int offset = targetLine < 0 ? position.resolve(editor.getDocument()) : editor.getDocument().getLineCount() == 0 ? 0
+                    : editor.getDocument().getLineStartOffset(Math.min(targetLine, editor.getDocument().getLineCount() - 1));
             if (offset >= 0) {
                 view.scrollToLine(Side.RIGHT, editor.getDocument().getLineNumber(offset));
                 editor.getCaretModel().moveToOffset(offset);

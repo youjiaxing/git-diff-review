@@ -157,6 +157,8 @@ public final class StageNavigationService implements Disposable {
         settingsChanged();
     }
     public void settingsChanged() {
+        project.getService(SourceStagingService.class).refresh();
+        project.getService(SourceMarkerService.class).refresh();
         project.getService(SourceCompareService.class).cancel();
         project.getService(StageRefreshService.class).userIntent();
         cancelPending();
@@ -362,6 +364,7 @@ public final class StageNavigationService implements Disposable {
             if (window != null) window.setSelectedComposite(p.session.preview, focus);
             if (focus) IdeFocusManager.getInstance(project).requestFocus(editor.getContentComponent(), true);
         } finally { openingEditor = false; }
+        if (!p.passiveRestore) view.showLineStart();
         Location arrived = new Location(p.to.file, kind(p.wrapper), p.to.side, NavigationPosition.capture(editor.getDocument(), offset), p.to.intent);
         detachPending();
         p.to.close();

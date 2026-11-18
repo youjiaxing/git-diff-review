@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>普通源码按行暂存 · 交互原型</title>
+<style>
+:root{color-scheme:dark;--background:#17191e;--foreground:#d9dce3;--muted:#9ba2af;--card:#24262d;--secondary:#30333d;--border:#3b3e48;--primary:#769bff;--success:#73ad7e;--warning:#d9b96c;--radius:9px;--font-sans:system-ui,"Microsoft YaHei",sans-serif;--font-mono:Consolas,monospace}
+*{box-sizing:border-box}body{margin:0;color:var(--foreground);font:13px/1.6 var(--font-sans)}button{font:inherit;color:inherit;cursor:pointer;border:1px solid var(--border);background:var(--secondary);border-radius:5px;padding:4px 9px}button:hover{border-color:var(--primary)}button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--primary);outline-offset:2px}button:disabled{opacity:.45;cursor:default}.demo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;color:var(--muted)}.demo strong{font-weight:500;color:var(--foreground)}.demo small{flex-basis:100%}.active{border-color:var(--primary);color:var(--primary)}.ide{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card)}.tab{display:flex;gap:12px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border)}.go{color:var(--primary);font-weight:600}.tab .state{margin-left:auto;color:var(--muted);font-size:11px}.legend{display:flex;gap:16px;flex-wrap:wrap;padding:8px 14px;background:var(--card);border-bottom:1px solid var(--border);color:var(--muted);font-size:12px}.legend span{display:flex;align-items:center;gap:6px}.legend i{height:14px}.tools{padding:9px 13px;min-height:79px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap}.summary{flex:1;min-width:180px}.summary strong{display:block;font-weight:500}.summary small{color:var(--muted)}.primary{border-color:var(--primary);background:var(--primary);color:var(--background);font-weight:600}.code-scroll{max-height:850px;overflow:auto;background:var(--background);scrollbar-color:var(--border) var(--background)}.code{min-width:650px;padding:10px 0;font:13px/25px var(--font-mono);user-select:none;touch-action:pan-y}.row{display:grid;grid-template-columns:36px 37px 14px 1fr;align-items:stretch;height:25px;cursor:text;position:relative}.row:hover{background:color-mix(in srgb,var(--secondary) 45%,transparent)}.row.selected{background:color-mix(in srgb,var(--primary) 24%,var(--background))}.number{text-align:right;color:var(--muted);padding-right:8px;font-size:12px}.hint{display:flex;align-items:center;justify-content:center;font:10px/14px var(--font-sans);color:var(--muted)}.hint b{font-weight:500;border:1px solid var(--border);border-radius:3px;padding:0 3px}.marker-cell{display:flex;justify-content:center;cursor:pointer}.marker{display:inline-block;width:8px;height:100%;color:var(--success);flex-shrink:0}.marker.u{border:2px solid currentColor}.marker.s{background:currentColor}.marker.m{border:2px solid currentColor;background:repeating-linear-gradient(135deg,currentColor 0 5px,var(--background) 5px 7px)}.native .marker{width:5px}.native .marker.u{border:0;background:currentColor}.native .marker.s{border:1px solid currentColor;background:none}.native .marker.m{border-width:1px}.native .marker.m{background:linear-gradient(to right,currentColor 50%,transparent 50%)}.native .hint{visibility:hidden}.source{padding-left:13px;white-space:pre;color:var(--foreground)}.kw{color:#d5a075}.str{color:var(--success)}.comment{color:var(--muted)}.status{padding:7px 13px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);min-height:35px}.tooltip{position:fixed;z-index:5;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 12px;max-width:290px;box-shadow:0 6px 18px #0005;pointer-events:none}.tooltip strong{display:block}.tooltip small{color:var(--muted)}[hidden]{display:none!important}.diff{padding:14px;background:var(--background)}.diff h3{font-size:14px;margin:0 0 5px;font-weight:500}.diff p{color:var(--muted);margin:5px 0 13px}.diff-head,.diff-row{display:grid;grid-template-columns:38px 1fr 1fr}.diff-head{border:1px solid var(--border);color:var(--muted);font-size:11px}.diff-head span{padding:6px}.diff-row{font:12px/24px var(--font-mono);cursor:pointer}.diff-row.selected{outline:1px solid var(--primary);background:color-mix(in srgb,var(--primary) 20%,transparent)}.diff-row code{white-space:pre-wrap;overflow-wrap:anywhere;border-right:1px solid var(--border);padding:4px 8px}.diff-row .insert{background:color-mix(in srgb,var(--success) 12%,transparent)}.diff-row input{margin:auto;accent-color:var(--primary)}.diff-actions{display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap}.note{margin:10px 0 0;color:var(--muted);font-size:12px}.key{font-size:11px;color:var(--muted)}@media(max-width:480px){.tab{gap:6px}.tab .state{display:none}.legend{gap:10px}.tools{min-height:100px}.summary{flex-basis:100%}.diff{padding:10px}.diff-head,.diff-row{grid-template-columns:26px 1fr 1fr}.demo{gap:6px}}
+.marker.u,.marker.m{border-top:0;border-bottom:0}.marker.start{border-top:2px solid currentColor}.marker.end{border-bottom:2px solid currentColor}.native .marker.s,.native .marker.m{border-top:0;border-bottom:0}.native .marker.start{border-top:1px solid currentColor}.native .marker.end{border-bottom:1px solid currentColor}
+</style>
+</head>
+<body>
+<p style="color:#dfb66e;font:12px/1.6 system-ui">历史原型：2026-11-12 起，正式插件改回官方含义：实心＝未暂存，空心＝已暂存，半填充＝混合。以下保留旧方案供追溯。</p>
+<div class="demo" aria-label="原型演示控制">
+<strong>原型演示</strong><button id="enhance" class="active">增强建议</button><button id="native">原生示意</button><button id="reset">重置</button>
+<small>增强建议与 GoLand 原生的虚实含义相反；仅作原型验证，尚未接入插件。</small>
+</div>
+<section class="ide" aria-label="普通源码编辑器原型">
+ <div class="tab"><span class="go">Go</span><span>push_gift.go</span><span class="state">普通源码 · 已保存</span></div>
+ <div id="source-view">
+  <div class="legend"><span><i class="marker u"></i><span id="legend-u">未暂存 · 空心</span></span><span><i class="marker s"></i><span id="legend-s">已暂存 · 实心</span></span><span><i class="marker m"></i>已暂存，另有修改</span></div>
+  <div class="tools"><div class="summary" aria-live="polite"><strong id="summary"></strong><small id="detail"></small></div><button id="stage" class="primary" hidden>Stage 选中行</button><button id="unstage" hidden>Unstage 选中行</button><button id="open-diff" hidden>在 Diff 中选择取消暂存</button><button id="clear" hidden aria-label="清除选区">×</button></div>
+  <div id="scroll" class="code-scroll"><div id="code" class="code" tabindex="0" aria-label="代码行，点击选择，拖动或 Shift 点击选择连续多行"></div></div>
+ </div>
+ <div id="diff-view" class="diff" hidden><h3>选择要取消暂存的内容</h3><p>当前源码与暂存版本无法唯一对应。请在 HEAD ↔ INDEX 中重新选择；尚未写入暂存区。</p><div class="diff-head"><span></span><span>HEAD · 提交版本</span><span>INDEX · 暂存版本</span></div><div id="diff-lines"></div><div class="diff-actions"><button id="diff-apply" disabled>Unstage 已选内容</button><button id="diff-back">返回源码</button><span class="key">未选内容和本地代码保留</span></div></div>
+ <div id="status" class="status" role="status">就绪 · 悬停变更标记查看说明</div>
+</section>
+<div class="demo" style="margin-top:12px"><strong>试选</strong><button data-range="111,115">未暂存 111–115</button><button data-range="131,135">已暂存 131–135</button><button data-range="140,142">重叠 140–142</button><button id="reedit">模拟选区暂存后再修改</button><small>也可直接拖选代码行。所有操作仅改变演示数据，不连接 Git。</small></div>
+<p class="note">关注：不选中时能否分清状态；操作条是否清楚；取消暂存转入 Diff 后是否容易继续。</p>
+<div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+<script>
+const lines=[
+'func buildPushGift(role *Role, cfg *GiftConfig) *Gift {',
+'    gift := &Gift{',
+'        ID:       cfg.ID,',
+'        RoleID:   role.ID,',
+'        Amount:   cfg.Amount,',
+'    }',
+'    if cfg.ExpiresIn > 0 {',
+'        gift.ExpiresAt = now() + cfg.ExpiresIn',
+'    }',
+'    // 按当前玩家条件构造礼包',
+'    if role.Level >= cfg.MinLevel {',
+'        gift.Enabled = true',
+'    }',
+'    gift.Title = cfg.Title',
+'    gift.Price = cfg.Price',
+'    gift.Currency = cfg.Currency',
+'    gift.Source = "push"',
+'    gift.CreatedAt = now()',
+'    gift.Region = role.Region',
+'    gift.ServerID = role.ServerID',
+'    // 已核对的发放条件',
+'    gift.Limit = cfg.Limit',
+'    gift.Priority = cfg.Priority',
+'    if cfg.OnceOnly {',
+'        gift.Limit = 1',
+'    }',
+'    gift.Tags = cfg.Tags',
+'    gift.Version = cfg.Version',
+'    // 暂存后再次调整的金额逻辑',
+'    gift.Amount = normalizeAmount(gift.Amount)',
+'    gift.Reason = "level_reward"',
+'    gift.ValidateAmount()',
+'    return gift',
+];
+let rows=[],selection=null,drag=false,anchor=111,activeLine=111,diffSelection=new Set();
+const $=id=>document.getElementById(id), esc=s=>s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+function state(r){return r.i===r.w?(r.i===r.h?'clean':'s'):(r.i===r.h?'u':'m')}
+function chosen(){return selection?rows.filter(r=>r.n>=selection[0]&&r.n<=selection[1]):[]}
+function select(a,b=a){anchor=a;activeLine=b;selection=[Math.min(a,b),Math.max(a,b)];$('tooltip').hidden=true;render()}
+function reset(){rows=lines.map((w,k)=>({n:111+k,h:null,i:k<20?null:w,w,ambiguous:k>=29&&k<=31}));rows[29].i='    gift.Amount = clampAmount(gift.Amount)';rows[30].i='    gift.Reason = "reward"';rows[31].i='    gift.Validate()';selection=null;diffSelection.clear();$('source-view').hidden=false;$('diff-view').hidden=true;render();say('就绪 · 悬停变更标记查看说明')}
+function say(s){$('status').textContent=s}
+function render(){
+ const view=$('scroll'),top=view.scrollTop,left=view.scrollLeft;
+ $('code').innerHTML=rows.map((r,k)=>{const s=state(r),first=k===0||state(rows[k-1])!==s,last=k===rows.length-1||state(rows[k+1])!==s;const label={u:'未',s:'已',m:'已+未',clean:''}[s];return '<div class="row'+(selection&&r.n>=selection[0]&&r.n<=selection[1]?' selected':'')+'" data-line="'+r.n+'"><span class="hint">'+(first&&label?'<b>'+label+'</b>':'')+'</span><span class="number">'+r.n+'</span><span class="marker-cell" tabindex="'+(s==='clean'?'-1':'0')+'" aria-label="'+r.n+' 行，'+({u:'未暂存',s:'已暂存',m:'已暂存且有新修改',clean:'无修改'}[s])+'">'+(s!=='clean'?'<i class="marker '+s+(first?' start':'')+(last?' end':'')+'"></i>':'')+'</span><span class="source">'+esc(r.w??'')+'</span></div>'}).join('');
+ view.scrollTop=top;view.scrollLeft=left;
+ const rs=chosen(),u=rs.filter(r=>r.i!==r.w),s=rs.filter(r=>r.h!==r.i),amb=s.some(r=>r.ambiguous&&r.i!==r.w);
+ $('summary').textContent=selection?'选中 '+selection[0]+'–'+selection[1]+' 行':'在源码中选择要操作的行';
+ $('detail').textContent=selection?(u.length+' 行含未暂存修改 · '+s.length+' 行含已暂存内容'+(amb?' · 取消暂存需在 Diff 重新选择':'')):'点击或拖选；Shift 点击可扩展选区';
+ $('stage').hidden=!u.length;$('unstage').hidden=!s.length||amb;$('open-diff').hidden=!s.length||!amb;$('clear').hidden=!selection;
+ $('reedit').disabled=!rs.some(r=>r.i!==r.h&&r.i===r.w);
+}
+function apply(kind,targets){const view=$('scroll'),top=view.scrollTop;let count=0;for(const r of targets){if(kind==='stage'&&r.i!==r.w){r.i=r.w;r.ambiguous=false;count++}if(kind==='unstage'&&r.i!==r.h){r.i=r.h;r.ambiguous=false;count++}}render();view.scrollTop=top;say((kind==='stage'?'已暂存':'已取消暂存')+' '+count+' 行 · 本地代码和阅读位置保留')}
+function openDiff(){diffSelection.clear();const rs=chosen().filter(r=>r.i!==r.h);$('diff-lines').innerHTML=rs.map(r=>'<label class="diff-row" data-diff="'+r.n+'"><input type="checkbox" value="'+r.n+'" aria-label="选择暂存内容 '+r.n+'"><code>'+esc(r.h??'（无此新增行）')+'</code><code class="insert">+ '+esc(r.i??'')+'</code></label>').join('');$('source-view').hidden=true;$('diff-view').hidden=false;$('diff-apply').disabled=true;say('待选择 · 此处展示暂存版本，尚未执行 Unstage')}
+function returnSource(){ $('diff-view').hidden=true;$('source-view').hidden=false;render() }
+$('stage').onclick=()=>apply('stage',chosen());$('unstage').onclick=()=>apply('unstage',chosen());$('open-diff').onclick=openDiff;$('clear').onclick=()=>{selection=null;render()};$('reset').onclick=reset;
+document.querySelectorAll('[data-range]').forEach(b=>b.onclick=()=>{const[a,z]=b.dataset.range.split(',').map(Number);select(a,z);$('scroll').scrollTop=Math.max(0,(a-111)*25-60)});
+function appearance(native){document.querySelector('.ide').classList.toggle('native',native);$('native').classList.toggle('active',native);$('enhance').classList.toggle('active',!native);$('legend-u').textContent='未暂存 · '+(native?'实心':'空心');$('legend-s').textContent='已暂存 · '+(native?'空心':'实心')};$('native').onclick=()=>appearance(true);$('enhance').onclick=()=>appearance(false);
+$('code').addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('.marker-cell'))return;const r=e.target.closest('[data-line]');if(!r)return;const n=+r.dataset.line;if(!e.shiftKey)anchor=n;drag=true;select(anchor,n);e.preventDefault();$('code').focus({preventScroll:true})});
+$('code').addEventListener('pointerover',e=>{if(!drag)return;const r=e.target.closest('[data-line]');if(r)select(anchor,+r.dataset.line)});window.addEventListener('pointerup',()=>drag=false);window.addEventListener('blur',()=>drag=false);
+$('code').addEventListener('keydown',e=>{if(e.key==='Escape'){selection=null;render()}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const step=e.key==='ArrowDown'?1:-1,n=Math.max(111,Math.min(143,(selection?activeLine:110)+step));if(!e.shiftKey)anchor=n;select(anchor,n)}});
+function tooltip(e){const mark=e.target.closest('.marker-cell');if(!mark)return;const r=rows.find(x=>x.n===+mark.closest('[data-line]').dataset.line),s=state(r);if(s==='clean')return;const info={u:['未暂存修改','工作区内容尚未进入暂存版本'],s:['已暂存内容','当前内容已进入暂存版本'],m:['已暂存，另有修改','暂存版本保留；当前源码还有后续修改']}[s];$('tooltip').innerHTML='<strong>'+r.n+' 行 · '+info[0]+'</strong><small>'+info[1]+'</small>';$('tooltip').hidden=false;const rect=mark.getBoundingClientRect();$('tooltip').style.left=Math.min(rect.right+10,Math.max(4,window.innerWidth-294))+'px';$('tooltip').style.top=Math.max(4,Math.min(rect.top,window.innerHeight-90))+'px'}
+$('code').addEventListener('pointerover',tooltip);$('code').addEventListener('focusin',tooltip);$('code').addEventListener('pointerout',e=>{if(e.target.closest('.marker-cell'))$('tooltip').hidden=true});$('code').addEventListener('focusout',()=>{$('tooltip').hidden=true});$('scroll').addEventListener('scroll',()=>{$('tooltip').hidden=true});
+$('diff-lines').addEventListener('change',e=>{const n=+e.target.value;if(e.target.checked)diffSelection.add(n);else diffSelection.delete(n);e.target.closest('.diff-row').classList.toggle('selected',e.target.checked);$('diff-apply').disabled=!diffSelection.size});$('diff-back').onclick=()=>{returnSource();say('已返回源码 · 暂存区未改变')};$('diff-apply').onclick=()=>{const rs=rows.filter(r=>diffSelection.has(r.n));returnSource();apply('unstage',rs)};
+$('reedit').onclick=()=>{for(const r of chosen())if(r.i!==r.h&&r.i===r.w){r.w+=' // 后续修改';r.ambiguous=true}render();say('演示：已暂存内容保留，选区出现新的未暂存修改')};
+reset();
+function runPrototypeChecks(){
+ const results=[];const check=(n,b)=>{if(!b)throw Error(n);results.push(n)};
+ check('初始三种状态',state(rows[0])==='u'&&state(rows[20])==='s'&&state(rows[29])==='m');
+ document.querySelector('[data-range="140,142"]').click();const row=document.querySelector('[data-line="141"] .source');row.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,shiftKey:true}));window.dispatchEvent(new PointerEvent('pointerup'));check('试选后 Shift 点击从正确锚点扩展',selection[0]===140&&selection[1]===141);select(140);for(let k=0;k<3;k++)$('code').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',shiftKey:true,bubbles:true}));check('Shift 向上连续扩选',selection[0]===137&&selection[1]===140);$('code').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',shiftKey:true,bubbles:true}));check('反向按键收缩选区',selection[0]===138&&selection[1]===140);
+ document.querySelector('[data-range="111,115"]').click();const pos=$('scroll').scrollTop,w=rows.map(r=>r.w);$('stage').click();check('Stage 仅改选中行且保留位置',rows.slice(0,5).every(r=>state(r)==='s')&&state(rows[5])==='u'&&$('scroll').scrollTop===pos);check('Stage 保留本地代码',rows.every((r,k)=>r.w===w[k]));
+ $('unstage').click();check('直接 Unstage 保留未选暂存',rows.slice(0,5).every(r=>state(r)==='u')&&state(rows[20])==='s');
+ document.querySelector('[data-range="140,142"]').click();check('重叠选区仅提供 Diff 取消暂存入口',$('unstage').hidden&&!$('open-diff').hidden);const original=rows.map(r=>r.i);$('open-diff').click();check('Diff 初始不写入且必须重选',!$('diff-view').hidden&&$('diff-apply').disabled&&rows.every((r,k)=>r.i===original[k]));$('diff-back').click();check('取消 Diff 无副作用',rows.every((r,k)=>r.i===original[k]));
+ $('open-diff').click();const input=document.querySelector('#diff-lines input');input.click();$('diff-apply').click();check('Diff 仅取消重新选中的暂存行',rows[29].i===null&&rows[30].i===original[30]&&rows[31].i===original[31]&&rows.every((r,k)=>r.w===w[k]));
+ document.querySelector('[data-range="131,135"]').click();$('reedit').click();check('再编辑保留暂存版本并显示重叠',state(rows[20])==='m'&&!$('open-diff').hidden);
+ $('clear').click();check('清空选区不显示写入入口',$('stage').hidden&&$('unstage').hidden&&$('open-diff').hidden);
+ $('native').click();check('原生示意切换',document.querySelector('.ide').classList.contains('native'));$('enhance').click();
+ const mark=document.querySelector('[data-line="140"] .marker-cell');mark.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));check('悬停提供状态文字',!$('tooltip').hidden&&$('tooltip').textContent.includes('140'));
+ reset();$('scroll').scrollTop=0;$('tooltip').hidden=true;return results;
+}
+if(document.body.dataset.selftest==='true')console.log('PROTOTYPE_CHECKS',JSON.stringify(runPrototypeChecks()));
+</script>
+</body>
+</html>

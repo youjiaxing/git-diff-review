@@ -6,7 +6,11 @@ import com.intellij.openapi.startup.StartupActivity;
 public final class NavigationStartup implements StartupActivity.DumbAware {
     @Override public void runActivity(Project project) {
         com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() -> {
-            if (!project.isDisposed()) project.getService(CommitTreeFollowService.class);
+            if (!project.isDisposed()) {
+                project.getService(CommitTreeFollowService.class);
+                project.getService(SourceStagingService.class);
+                project.getService(SourceMarkerService.class);
+            }
         });
     }
 }

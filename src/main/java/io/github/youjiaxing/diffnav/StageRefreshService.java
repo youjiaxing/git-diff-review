@@ -51,6 +51,18 @@ public final class StageRefreshService implements Disposable {
         selections.add(selection);
         Disposer.register(lifetime, () -> selections.remove(selection));
     }
+    void viewerCreated(com.intellij.diff.FrameDiffTool.DiffViewer viewer, com.intellij.diff.DiffContext context,
+                       com.intellij.diff.requests.DiffRequest request) {
+        if (!(viewer instanceof DiffViewerBase base)) return;
+        for (Refresh refresh : List.copyOf(pending.values())) if (refresh.stage.getContext() == context) {
+            base.addListener(new com.intellij.diff.tools.util.base.DiffViewerListener() {
+                @Override protected void onAfterRediff() {
+                    com.intellij.openapi.application.ReadAction.run(() -> refresh.beforePaint(base, request));
+                }
+            });
+            refresh.watchLayout(base.getComponent(), base, request);
+        }
+    }
     void userIntent() {
         for (LineStaging selection : List.copyOf(selections)) selection.invalidate();
         for (Refresh refresh : List.copyOf(pending.values())) refresh.cancel();
@@ -71,12 +83,12 @@ public final class StageRefreshService implements Disposable {
         final EditorWindow window;
         final VirtualFile preview;
         final GitFileStatusNode original;
-        final NavigationPosition position;
+        final RefreshPosition position;
         final Side side;
         final Disposable lifetime = Disposer.newDisposable("Staging preview refresh");
         final Alarm alarm;
         volatile boolean canceled;
-        boolean applied, treePending, tickScheduled, documentOnly, indexExists = true;
+        boolean applied, treePending, tickScheduled, documentOnly, restoring, indexExists = true;
         String expected;
         long deadline;
         long lastReload;
@@ -84,7 +96,7 @@ public final class StageRefreshService implements Disposable {
         Object boundViewer;
         Refresh(GitStageDiffRequestProcessor stage, EditorWindow window, Editor selected, GitFileStatusNode node) {
             this.stage = stage; this.window = window; this.original = node; preview = window.getSelectedFile();
-            position = NavigationPosition.capture(selected.getDocument(), selected.getCaretModel().getOffset());
+            position = new RefreshPosition(selected, stage.getComponent());
             var originalView = StageDiffView.of(stage.getActiveViewer());
             side = originalView == null ? Side.LEFT : originalView.side(selected);
             Disposer.register(StageRefreshService.this, lifetime);
@@ -153,6 +165,34 @@ public final class StageRefreshService implements Disposable {
             if (stage.getActiveViewer() instanceof DiffViewerBase viewer) viewer.scheduleRediff();
             retry();
         }
+        void beforePaint(DiffViewerBase viewer, com.intellij.diff.requests.DiffRequest request) {
+            if (canceled || restoring || !ownsWindow()
+                    || stage.getActiveViewer() != viewer || stage.getActiveRequest() != request) return;
+            var input = java.awt.EventQueue.getCurrentEvent();
+            if (input instanceof MouseWheelEvent || input instanceof KeyEvent key && key.getID() == KeyEvent.KEY_PRESSED
+                    || input instanceof MouseEvent mouse && (mouse.getID() == MouseEvent.MOUSE_PRESSED || mouse.getID() == MouseEvent.MOUSE_DRAGGED)) {
+                cancel(); return;
+            }
+            var view = StageDiffView.current(stage);
+            if (view == null || !(stage.getCurrentChange().getUserObject() instanceof GitFileStatusNode node)
+                    || !node.getFilePath().equals(original.getFilePath())) return;
+            boolean compatible = node.getKind() == original.getKind()
+                    || original.getKind() == NodeKind.UNTRACKED && node.getKind() == NodeKind.UNSTAGED
+                    || !indexExists && node.getKind() == NodeKind.UNTRACKED;
+            // Preserve the picture during native refresh too. advance() alone certifies the new Git baseline.
+            if (compatible) restorePosition(view);
+        }
+        void watchLayout(java.awt.Component component, DiffViewerBase viewer, com.intellij.diff.requests.DiffRequest request) {
+            if (component instanceof javax.swing.JViewport viewport) {
+                javax.swing.event.ChangeListener listener = event ->
+                        com.intellij.openapi.application.ReadAction.run(() -> beforePaint(viewer, request));
+                viewport.addChangeListener(listener);
+                Disposer.register(lifetime, () -> viewport.removeChangeListener(listener));
+                Disposer.register(viewer, () -> viewport.removeChangeListener(listener));
+            }
+            if (component instanceof java.awt.Container container)
+                for (var child : container.getComponents()) watchLayout(child, viewer, request);
+        }
         void retry() {
             if (canceled || tickScheduled) return;
             tickScheduled = true;
@@ -192,7 +232,7 @@ public final class StageRefreshService implements Disposable {
             if (treePending) { retry(); return; }
             if (documentOnly) {
                 var view = StageDiffView.current(stage);
-                if (view != null && view.editor(Side.RIGHT).getDocument().getText().equals(expected)) { restorePosition(view); cancel(); }
+                if (view != null && view.editor(Side.RIGHT).getDocument().getText().equals(expected) && restorePosition(view)) cancel();
                 else retry();
                 return;
             }
@@ -214,8 +254,8 @@ public final class StageRefreshService implements Disposable {
             if (view != null) {
                 Editor index = view.editor(node.getKind() == NodeKind.STAGED ? Side.RIGHT : Side.LEFT);
                 if (index == null && !indexExists || index != null && index.getDocument().getText().equals(expected)) {
-                    restorePosition(view);
-                    cancel(); return;
+                    if (restorePosition(view)) cancel(); else retry();
+                    return;
                 }
             }
             if (System.nanoTime() - lastReload > java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(500)) {
@@ -224,15 +264,14 @@ public final class StageRefreshService implements Disposable {
             }
             retry();
         }
-        void restorePosition(StageDiffView view) {
+        boolean restorePosition(StageDiffView view) {
+            if (!(stage.getActiveViewer() instanceof DiffViewerBase viewer) || isStale(viewer)
+                    || viewer.getRequest() != stage.getActiveRequest()) return false;
             Side actual = view.editor(side) == null ? Side.RIGHT : side;
             var editor = view.editor(actual);
-            int offset = position.resolve(editor.getDocument());
-            if (offset >= 0) {
-                own++;
-                try { editor.getCaretModel().moveToOffset(offset); view.scrollToLine(actual, editor.getDocument().getLineNumber(offset)); }
-                finally { own--; }
-            }
+            own++; restoring = true;
+            try { return position.restore(editor); }
+            finally { restoring = false; own--; }
         }
     }
     @Override public void dispose() { userIntent(); }

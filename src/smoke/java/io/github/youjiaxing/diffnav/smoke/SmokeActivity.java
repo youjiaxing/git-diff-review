@@ -48,6 +48,12 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
     private UnstagedReviewChecks unstaged;
     private CompareMenuChecks compareMenu;
     private NewFileReviewChecks newFileReview;
+    private StageViewportChecks stageViewport;
+    private PopupUxChecks popupUx;
+    private SourceStagingChecks sourceStaging;
+    private MarkerGranularityChecks markerGranularity;
+    private HorizontalNavigationChecks horizontalNavigation;
+    private MarkerStateChecks markerStates;
 
     @Override public void runActivity(Project project) {
         String output = System.getProperty("diffnav.smoke.report");
@@ -87,7 +93,7 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
                 try {
                     if (!com.intellij.openapi.application.TransactionGuard.getInstance().isWritingAllowed())
                         throw new AssertionError("Smoke actions require an IDE write-safe context");
-                    if (++ticks > 600) throw new AssertionError("Timed out at step " + step);
+                    if (++ticks > 1200) throw new AssertionError("Timed out at step " + step);
                     tick();
                     if (step == 99) ticker.shutdown();
                 } catch (Throwable error) {
@@ -109,7 +115,32 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
         });
     }
 
+    private ReplacementSelectionChecks replacementSelection;
+    private NativeMarkerPopupChecks nativeMarkerPopup;
     private void tick() throws Exception {
+        if (Boolean.getBoolean("diffnav.smoke.sourceOnly")) {
+            if (sourceStaging == null) sourceStaging = new SourceStagingChecks(project, this::check);
+            try {
+                if (Boolean.getBoolean("diffnav.smoke.nativePopupOnly") || Boolean.getBoolean("diffnav.smoke.markerPopupOnly")
+                        ? (nativeMarkerPopup == null ? nativeMarkerPopup = new NativeMarkerPopupChecks(project, this::check) : nativeMarkerPopup).tick()
+                        : Boolean.getBoolean("diffnav.smoke.replacementOnly")
+                        ? (replacementSelection == null ? replacementSelection = new ReplacementSelectionChecks(project, this::check) : replacementSelection).tick()
+                        : Boolean.getBoolean("diffnav.smoke.stateOnly")
+                        ? (markerStates == null ? markerStates = new MarkerStateChecks(project, this::check) : markerStates).tick()
+                        : Boolean.getBoolean("diffnav.smoke.horizontalOnly")
+                        ? (horizontalNavigation == null ? horizontalNavigation = new HorizontalNavigationChecks(project, this::check) : horizontalNavigation).tick()
+                        : Boolean.getBoolean("diffnav.smoke.markerOnly")
+                        ? (markerGranularity == null ? markerGranularity = new MarkerGranularityChecks(project, this::check) : markerGranularity).tick()
+                        : sourceStaging.tick()) {
+                    log("PASS " + passed + " source staging integration checks"); step = 99;
+                    ApplicationManager.getApplication().invokeLater(() -> ApplicationManager.getApplication().exit());
+                }
+            } catch (Exception | Error failure) {
+                ApplicationManager.getApplication().invokeLater(() -> ApplicationManager.getApplication().exit());
+                throw failure;
+            }
+            return;
+        }
         if (ticks % 15 == 0 && stage != null) {
             var current = stage.getCurrentChange();
             log("WAIT step=" + step + " change=" + (current == null ? null : current.getUserObject())
@@ -122,6 +153,10 @@ public final class SmokeActivity implements StartupActivity.DumbAware {
                 if (ticks % 15 == 0) log("WAIT no Commit toolwindow; windows=" + java.util.Arrays.toString(ToolWindowManager.getInstance(project).getToolWindowIds()));
                 return;
             }
+            if (popupUx == null) popupUx = new PopupUxChecks(project, this::check);
+            if (!popupUx.tick()) return;
+            if (stageViewport == null) stageViewport = new StageViewportChecks(project, this::check);
+            if (!stageViewport.tick()) return;
             if (selectionUx == null) selectionUx = new SelectionUxChecks(project, this::check);
             if (!selectionUx.tick()) return;
             if (newFileReview == null) newFileReview = new NewFileReviewChecks(project, this::check);

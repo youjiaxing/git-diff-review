@@ -2,7 +2,15 @@ param(
     [Parameter(Mandatory = $true)][string]$IdePath,
     [string]$JdkPath = $env:JAVA_HOME,
     [string]$PluginArchive,
+    [string]$TestConfigPath,
     [switch]$Reuse,
+    [switch]$SourceOnly,
+    [switch]$MarkerOnly,
+    [switch]$HorizontalOnly,
+    [switch]$StateOnly,
+    [switch]$ReplacementOnly,
+    [switch]$MarkerPopupOnly,
+    [switch]$NativePopupOnly,
     [ValidatePattern('^[a-zA-Z0-9_-]+$')][string]$SandboxName = 'sandbox'
 )
 $ErrorActionPreference = 'Stop'
@@ -13,7 +21,8 @@ elseif (!(Test-Path -LiteralPath $PluginArchive -PathType Leaf)) { throw 'Plugin
 $sandbox = Join-Path (Join-Path $root 'build') $SandboxName
 $fixture = Join-Path $sandbox 'diffnav-fixture'
 if ((Test-Path -LiteralPath "$fixture\.git") -and !$Reuse) { throw 'A sandbox fixture already exists. Use -Reuse to run again.' }
-$options = Join-Path $sandbox 'config\options'
+$testConfig = if ($TestConfigPath) { [IO.Path]::GetFullPath($TestConfigPath) } else { Join-Path $sandbox 'config' }
+$options = Join-Path $testConfig 'options'
 $pluginLib = Join-Path $sandbox 'plugins\git-diff-review\lib'
 $testLib = Join-Path $sandbox 'plugins\diffnav-smoke\lib'
 foreach ($sandboxPlugin in @('goland-diff-navigation', 'git-diff-review')) {
@@ -96,6 +105,12 @@ Set-Content -LiteralPath "$fixture\replace.txt" -Encoding utf8 -Value "newOneLon
 [IO.File]::WriteAllText((Join-Path $fixture 'review-new.txt'), "first`nsecond`nthird`nfourth`n", [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $fixture 'review-cancel.txt'), "alpha`nbeta`ngamma`n", [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText((Join-Path $fixture 'review-race.txt'), "one`ntwo`nthree`n", [Text.UTF8Encoding]::new($false))
+foreach ($viewportFile in @('review-viewport.txt', 'review-viewport-cancel.txt')) {
+    $viewportText = ((1..300 | ForEach-Object { 'unique viewport line {0:D3} with enough text for selection' -f $_ }) -join "`n") + "`n"
+    [IO.File]::WriteAllText((Join-Path $fixture $viewportFile), $viewportText, [Text.UTF8Encoding]::new($false))
+}
+$popupText = ((1..240 | ForEach-Object { ('popup line {0:D3} ' -f $_) + ('selectable text ' * 18) }) -join "`n") + "`n"
+[IO.File]::WriteAllText((Join-Path $fixture 'popup-review.txt'), $popupText, [Text.UTF8Encoding]::new($false))
 Set-Content -LiteralPath "$fixture\added\existing.go" -Encoding utf8 -Value "package added`n`nfunc Existing() int { return AddedB() + 1 }"
 Set-Content -LiteralPath "$fixture\added\a.go" -Encoding utf8 -Value "package added`n`nfunc AddedA() int { return AddedB() + AddedStaged() + AddedPartial() }"
 Set-Content -LiteralPath "$fixture\added\b.go" -Encoding utf8 -Value "package added`n`nfunc AddedB() int { return Existing() }"
@@ -110,7 +125,7 @@ Remove-Item -LiteralPath (Join-Path $fixture 'deleted.txt')
 $vmOptions = Join-Path $sandbox 'sandbox.vmoptions'
 $originalOptions = Get-Content -LiteralPath "$IdePath\bin\goland64.exe.vmoptions"
 $sandboxOptions = @(
-    "-Didea.config.path=$sandbox/config",
+    "-Didea.config.path=$testConfig",
     "-Didea.system.path=$sandbox/system",
     "-Didea.plugins.path=$sandbox/plugins",
     "-Didea.log.path=$sandbox/log",
@@ -122,6 +137,13 @@ $sandboxOptions = @(
     '-Dide.experimental.ui.onboarding=false'
     '-Dllm.show.ai.promotion.window.on.start=false'
 )
+if ($SourceOnly) { $sandboxOptions += '-Ddiffnav.smoke.sourceOnly=true' }
+if ($MarkerOnly) { $sandboxOptions += @('-Ddiffnav.smoke.sourceOnly=true', '-Ddiffnav.smoke.markerOnly=true') }
+if ($HorizontalOnly) { $sandboxOptions += @('-Ddiffnav.smoke.sourceOnly=true', '-Ddiffnav.smoke.horizontalOnly=true') }
+if ($NativePopupOnly) { $sandboxOptions += @('-Ddiffnav.smoke.sourceOnly=true', '-Ddiffnav.smoke.nativePopupOnly=true') }
+if ($MarkerPopupOnly) { $sandboxOptions += @('-Ddiffnav.smoke.sourceOnly=true', '-Ddiffnav.smoke.markerPopupOnly=true') }
+if ($ReplacementOnly) { $sandboxOptions += @('-Ddiffnav.smoke.sourceOnly=true', '-Ddiffnav.smoke.replacementOnly=true') }
+if ($StateOnly) { $sandboxOptions += @('-Ddiffnav.smoke.sourceOnly=true', '-Ddiffnav.smoke.stateOnly=true') }
 Set-Content -LiteralPath $vmOptions -Encoding utf8 -Value ($originalOptions + $sandboxOptions)
 $previous = $env:GOLAND_VM_OPTIONS
 try {

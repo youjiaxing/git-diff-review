@@ -17,7 +17,7 @@ public final class SelectedLinesTest {
         check(!SelectedLines.apply("a\nb\n", true, "A\nB\n", true, replace, true, 0, 2).needsPreview(), "whole selected replacement is exact");
         var complex = SelectedLines.apply("a\nb\n", true, "v\nA\nB\n", true,
                 List.of(new SelectedLines.Change(0, 2, 0, 3)), true, 1, 2);
-        check(complex.needsPreview() && complex.text().equals("A\na\nb\n"), "ambiguous replacement preserves originals for editable preview");
+        check(complex.unresolved() && !complex.changed() && complex.text().equals("a\nb\n"), "unresolved replacement must not invent an insertion candidate");
         check(!SelectedLines.apply("a\n", true, "b\n", true, List.of(new SelectedLines.Change(0, 1, 0, 1)), true, 0, 0).changed(), "empty selection is a no-op");
         var delete = List.of(new SelectedLines.Change(0, 1, 0, 0));
         check(!SelectedLines.apply("a\n", true, "", false, delete, false, 0, 1).exists(), "delete removes index entry");

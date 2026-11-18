@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>暂存状态图示</title>
+<style>
+:root{color-scheme:dark;--background:#17191e;--foreground:#d9dce3;--muted:#a1a6b2;--card:#24262d;--border:#3b3e48;--success:#73ad7e;--warning:#dfb66e;--radius:8px;--font-sans:system-ui,"Microsoft YaHei",sans-serif;--font-mono:Consolas,monospace}
+*{box-sizing:border-box}body{margin:0;font:13px/1.6 var(--font-sans);color:var(--foreground)}.caption{margin:0 0 12px;color:var(--muted);font-size:12px}.example{margin-bottom:18px}.head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px}.name{font-size:15px;font-weight:600}.badge{display:inline-flex;gap:5px;align-items:center;padding:1px 7px;border:1px solid var(--border);border-radius:4px;font-size:11px}.pending{color:var(--warning);border-color:color-mix(in srgb,var(--warning) 40%,var(--border));background:color-mix(in srgb,var(--warning) 7%,transparent)}.stored{color:var(--foreground)}.check{font-size:13px;color:var(--muted)}.explain{font-size:12px;color:var(--muted);margin:0 0 8px}.editor{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--background)}.file{font-size:11px;color:var(--muted);background:var(--card);padding:5px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px}.sample{display:flex;align-items:center;min-height:51px;overflow-x:auto}.number{color:var(--muted);font:12px var(--font-mono);padding:0 11px 0 15px}.mark{display:block;width:7px;height:29px;color:var(--success);flex-shrink:0}.solid{background:currentColor}.outline{border:2px solid currentColor}.mixed{border:2px solid currentColor;background:repeating-linear-gradient(135deg,currentColor 0 5px,var(--background) 5px 7px)}code{font:13px var(--font-mono);padding:0 14px;white-space:nowrap}.value{color:var(--warning)}.versions{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--border);padding:7px 12px;gap:12px;color:var(--muted);font-size:11px;background:var(--card)}.versions strong{font:13px var(--font-mono);color:var(--foreground);margin-left:7px}.note{font-size:12px;color:var(--muted);margin:0}.native{font-size:10px;color:var(--muted)}@media(max-width:450px){.versions{gap:5px;padding:7px 9px}.versions strong{display:block;margin:1px 0 0}.head{gap:7px}.native{display:none}}
+</style>
+</head>
+<body>
+<p style="color:#dfb66e;font:12px/1.6 system-ui">历史原型：2026-11-12 起，正式插件改回官方含义：实心＝未暂存，空心＝已暂存，半填充＝混合。以下保留旧方案供追溯。</p>
+<p class="caption">同一行源码的三种情形。空心表示尚未纳入，实心表示已经纳入；文字明确说明状态。</p>
+<section class="example">
+ <div class="head"><span class="name">未暂存</span><span class="badge pending">待纳入本次提交</span></div>
+ <p class="explain">当前源码已经修改，暂存版本仍是原来的内容。</p>
+ <div class="editor"><div class="file"><span>push_gift.go</span><span class="native">空心变更条 · 尚未纳入</span></div><div class="sample"><span class="number">128</span><i class="mark outline" aria-label="空心：未暂存的新增标记设计示意"></i><code>gift.Amount = <span class="value">20</span></code></div><div class="versions"><span>当前提交<strong>无此行</strong></span><span>暂存版本<strong>无此行</strong></span><span>当前源码<strong>20</strong></span></div></div>
+</section>
+<section class="example">
+ <div class="head"><span class="name">已暂存</span><span class="badge stored"><span class="check">✓</span>已纳入本次提交</span></div>
+ <p class="explain">当前源码与暂存版本相同，这行内容已进入待提交的版本。</p>
+ <div class="editor"><div class="file"><span>push_gift.go</span><span class="native">实心变更条 · 已经纳入</span></div><div class="sample"><span class="number">128</span><i class="mark solid" aria-label="实心：已暂存的新增标记设计示意"></i><code>gift.Amount = <span class="value">20</span></code></div><div class="versions"><span>当前提交<strong>无此行</strong></span><span>暂存版本<strong>20</strong></span><span>当前源码<strong>20</strong></span></div></div>
+</section>
+<section class="example">
+ <div class="head"><span class="name">已暂存，另有修改</span><span class="badge stored"><span class="check">✓</span>已有暂存内容</span><span class="badge pending">另有未暂存修改</span></div>
+ <p class="explain">已有一版纳入本次提交，之后又修改了源码；当前显示的 20 尚未暂存。</p>
+ <div class="editor"><div class="file"><span>push_gift.go</span><span class="native">实心加斜纹 · 已暂存，另有修改</span></div><div class="sample"><span class="number">128</span><i class="mark mixed" aria-label="已暂存且另有修改的标记设计示意"></i><code>gift.Amount = <span class="value">20</span></code></div><div class="versions"><span>当前提交<strong>无此行</strong></span><span>暂存版本<strong>15</strong></span><span>当前源码<strong>20</strong></span></div></div>
+</section>
+<p class="note">绿色始终表示“新增行”；文字和辅助标记区分暂存状态。✓ 仅表示已纳入暂存版本，不表示已提交或已审阅。此处为设计示意，与 GoLand 原生的虚实含义相反；尚未接入插件。</p>
+</body>
+</html>

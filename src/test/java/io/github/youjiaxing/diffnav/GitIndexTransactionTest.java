@@ -83,6 +83,14 @@ public final class GitIndexTransactionTest {
             check(initial.head().isEmpty() && initial.committed() == null, "valid unborn HEAD remains supported");
             Files.writeString(unborn.resolve(".git/HEAD"), "invalid HEAD\n");
             reject(() -> tx.capture(unborn, "first.txt", StandardCharsets.UTF_8), "invalid HEAD is not treated as an empty baseline");
+            Files.writeString(root.resolve("eof-replacement.raw"), "a\r\nb\r\nkeep\nz\r\n"); git(root, "add", "eof-replacement.raw");
+            String eofWanted = "A\nB\nC\nkeep\nz";
+            Files.writeString(root.resolve("eof-replacement.raw"), eofWanted);
+            var eofSnapshot = tx.capture(root, "eof-replacement.raw", StandardCharsets.UTF_8);
+            String eofBefore = eofSnapshot.staged().text();
+            var eofPlan = SelectedLines.apply(eofBefore, true, eofWanted, true, SelectedReplacementTest.changes(eofBefore, eofWanted), true, 0, 5);
+            tx.commit(eofSnapshot, eofPlan.text(), eofPlan.exists(), eofPlan.baseOrigins(), () -> true);
+            check(git(root, "show", ":eof-replacement.raw").equals("A\r\nB\r\nC\r\nkeep\nz"), "replacement plus EOF preserves untouched mixed LF line bytes");
             System.out.println("GitIndexTransactionTest: " + passed + " real Git checks passed");
         } finally {
             try (var paths = Files.walk(root)) { for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {

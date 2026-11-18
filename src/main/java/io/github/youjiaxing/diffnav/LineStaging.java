@@ -22,12 +22,10 @@ import com.intellij.openapi.ui.popup.*;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.ui.awt.RelativePoint;
 import git4idea.config.GitExecutableManager;
 import git4idea.index.GitStageTracker;
 import git4idea.index.ui.*;
 import java.awt.BorderLayout;
-import java.awt.Point;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -44,10 +42,12 @@ public final class LineStaging {
     private final Project project;
     private boolean busy, wantPopup;
     private long generation;
+    private long interaction;
     private Selection pending;
     private Editor selectionEditor;
     private Prepared prepared;
     private JBPopup popup;
+    private SelectionToolbar popupLayout;
     private record Plan(String before, SelectedLines.Result result) {}
     private record Prepared(Selection selection, GitIndexTransaction transaction,
                             GitIndexTransaction.Snapshot snapshot, Map<SelectionOperation, Plan> plans) {}
@@ -73,9 +73,14 @@ public final class LineStaging {
         for (Editor editor : controller.editors) {
             editor.putUserData(CONTROLLER, controller);
             editor.addEditorMouseListener(new EditorMouseListener() {
-                @Override public void mousePressed(EditorMouseEvent event) { controller.invalidate(); controller.selectionEditor = editor; }
+                @Override public void mousePressed(EditorMouseEvent event) { controller.interaction++; controller.invalidate(); controller.selectionEditor = editor; }
                 @Override public void mouseReleased(EditorMouseEvent event) {
-                    if (SwingUtilities.isLeftMouseButton(event.getMouseEvent())) controller.offer(editor);
+                    if (SwingUtilities.isLeftMouseButton(event.getMouseEvent())) {
+                        long ticket = controller.interaction;
+                        later(() -> {
+                            if (ticket == controller.interaction && controller.selectionEditor == editor && !viewer.isDisposed()) controller.offer(editor);
+                        });
+                    }
                 }
             }, viewer);
             editor.getSelectionModel().addSelectionListener(new SelectionListener() {
@@ -88,6 +93,7 @@ public final class LineStaging {
             var focus = new java.awt.event.FocusAdapter() {
                 @Override public void focusGained(java.awt.event.FocusEvent event) {
                     if (controller.selectionEditor != editor) {
+                        controller.interaction++;
                         controller.invalidate(); controller.selectionEditor = editor; controller.prepare(editor);
                     }
                 }
@@ -97,24 +103,24 @@ public final class LineStaging {
         }
         for (var document : new HashSet<>(List.of(controller.leftDocument, controller.rightDocument)))
             document.addDocumentListener(new DocumentListener() {
-                @Override public void beforeDocumentChange(DocumentEvent event) { controller.invalidate(); }
+                @Override public void beforeDocumentChange(DocumentEvent event) { controller.interaction++; controller.invalidate(); }
             }, viewer);
         viewer.addListener(new DiffViewerListener() {
-            @Override protected void onBeforeRediff() { controller.invalidate(); }
+            @Override protected void onBeforeRediff() { controller.interaction++; controller.invalidate(); }
         });
         project.getMessageBus().connect(viewer).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override public void selectionChanged(FileEditorManagerEvent event) {
                 var selection = controller.pending;
-                if (selection != null && !selection.ownsWindow()) controller.invalidate();
+                if (selection != null && !selection.ownsWindow()) { controller.interaction++; controller.invalidate(); }
             }
-            @Override public void fileClosed(FileEditorManager manager, VirtualFile file) { controller.invalidate(); }
+            @Override public void fileClosed(FileEditorManager manager, VirtualFile file) { controller.interaction++; controller.invalidate(); }
         });
-        Disposer.register(viewer, controller::invalidate);
+        Disposer.register(viewer, () -> { controller.interaction++; controller.invalidate(); });
     }
     private static LineStaging controller(Editor editor) { return editor == null ? null : editor.getUserData(CONTROLLER); }
     static List<SelectionOperation> operations(Editor editor) {
         var controller = controller(editor);
-        if (controller == null) return List.of();
+        if (controller == null) return SourceStagingService.operations(editor);
         controller.prepare(editor);
         var ready = controller.prepared;
         return ready != null && ready.selection.editor == editor && controller.valid(editor) && !controller.busy && ready.selection.current()
@@ -133,6 +139,7 @@ public final class LineStaging {
     }
     static void invoke(Editor editor) {
         var controller = controller(editor);
+        if (controller == null && SourceStagingService.handles(editor)) { SourceStagingService.invoke(editor); return; }
         if (controller == null) return;
         var operations = operations(editor).stream().filter(op -> op != SelectionOperation.DISCARD).toList();
         if (operations.size() == 1) controller.execute(operations.getFirst());
@@ -140,6 +147,7 @@ public final class LineStaging {
     }
     static void invoke(Editor editor, SelectionOperation operation) {
         var controller = controller(editor);
+        if (controller == null && SourceStagingService.handles(editor)) { SourceStagingService.invoke(editor, operation); return; }
         if (controller != null && operations(editor).contains(operation)) controller.execute(operation);
     }
     void invalidate() {
@@ -274,28 +282,34 @@ public final class LineStaging {
         var changes = ComparisonManager.getInstance().compareLines(before, wanted, ComparisonPolicy.DEFAULT, new EmptyProgressIndicator()).stream()
                 .map(f -> new SelectedLines.Change(f.getStartLine1(), f.getEndLine1(), f.getStartLine2(), f.getEndLine2())).toList();
         var result = SelectedLines.apply(before, beforeExists, wanted, wantedExists, changes, selectDesired, selection.start, selection.end);
-        if (result.changed()) plans.put(operation, new Plan(before, result));
+        if (result.changed() || result.unresolved()) plans.put(operation, new Plan(before, result));
     }
     private void showPopup(List<SelectionOperation> operations) {
         closePopup(); var ready = prepared;
         if (ready == null || !ready.selection.current() || operations.isEmpty() || busy) return;
-        var panel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 2, 0));
+        var buttons = new ArrayList<JButton>();
         for (var operation : operations) {
             var button = new JButton(operation.text); button.setFocusable(false);
+            if (operation == SelectionOperation.STAGE)
+                com.intellij.ui.ComponentUtil.putClientProperty(button, com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI.DEFAULT_STYLE_KEY, true);
             if (operation == SelectionOperation.DISCARD) button.setToolTipText("撤销选中的本地修改；暂存内容保留，可用 Ctrl+Z 撤销");
-            button.addActionListener(event -> { closePopup(); execute(operation); }); panel.add(button);
+            button.setActionCommand(operation.text);
+            button.addActionListener(event -> { closePopup(); execute(operation); }); buttons.add(button);
         }
-        popup = JBPopupFactory.getInstance().createComponentPopupBuilder(panel, null).setRequestFocus(false).setFocusable(false)
-                .setCancelOnClickOutside(true).setModalContext(false).setCancelOnWindowDeactivation(true).createPopup();
-        var editor = ready.selection.editor;
-        Point point = editor.logicalPositionToXY(editor.offsetToLogicalPosition(editor.getSelectionModel().getSelectionEnd())); point.translate(8, editor.getLineHeight());
-        popup.show(new RelativePoint(editor.getContentComponent(), point));
+        popupLayout = new SelectionToolbar(ready.selection.editor, buttons,
+                () -> prepared == ready && !busy && ready.selection.current(), this::closePopup, viewer);
+        popup = popupLayout.popup();
+        popupLayout.show();
     }
     private void execute(SelectionOperation operation) {
         closePopup(); var ready = prepared;
         if (busy || ready == null || ready.snapshot == null || !ready.selection.current()) return;
         var plan = ready.plans.get(operation);
         if (plan == null) return;
+        if (plan.result.unresolved()) {
+            reason("无法定位选中行对应的替换范围，请扩大选区覆盖完整替换块，或使用原生按块操作");
+            return;
+        }
         busy = true;
         // Leave action callbacks before a modal preview or a document command can dispatch events.
         later(() -> {
@@ -354,8 +368,13 @@ public final class LineStaging {
     private void finish(String failure) { busy = false; invalidate(); if (failure != null) reason(failure); }
     private void reason(String text) { if (!project.isDisposed()) project.getService(StageNavigationService.class).comparisonFailed(text); }
     private static void later(Runnable runnable) { ApplicationManager.getApplication().invokeLater(runnable, ModalityState.nonModal()); }
-    private void closePopup() { if (popup != null) { var old = popup; popup = null; old.cancel(); } }
-    private static final class SelectionPreview extends DialogWrapper {
+    private void closePopup() {
+        var layout = popupLayout; popupLayout = null;
+        var old = popup; popup = null;
+        if (layout != null) layout.close();
+        if (old != null && !old.isDisposed()) old.cancel();
+    }
+    static final class SelectionPreview extends DialogWrapper {
         private final Project project;
         private final String before, candidate;
         private final SelectionOperation operation;

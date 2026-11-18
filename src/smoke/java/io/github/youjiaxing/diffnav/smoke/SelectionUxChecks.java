@@ -136,6 +136,8 @@ final class SelectionUxChecks {
                 var popup = popup(editor); if (popup == null) return false;
                 check.accept(button(popup.getContent(), "Stage 选中行") != null && button(popup.getContent(), "Unstage 选中行") != null && button(popup.getContent(), "Discard 选中修改") != null,
                         "mixed INDEX selection explicitly lists all three effective operations");
+                check.accept(PopupUxChecks.viewport(editor).contains(PopupUxChecks.outer(popup)),
+                        "mixed three-action popup fits completely inside its owning INDEX code viewport");
                 invokeWhenReady("DiffNavigation.SelectedLines", editor);
                 popup = popup(editor);
                 check.accept(popup != null && button(popup.getContent(), "Stage 选中行") != null && button(popup.getContent(), "Unstage 选中行") != null && button(popup.getContent(), "Discard 选中修改") == null,

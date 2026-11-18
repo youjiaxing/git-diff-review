@@ -29,7 +29,7 @@ $testClasses = Join-Path $output 'test-classes'
 if ($LASTEXITCODE -ne 0) { throw 'Test compilation failed.' }
 & "$JdkPath\bin\java.exe" -cp "$testClasses;$classes;$cp" io.github.youjiaxing.diffnav.ReviewHistoryTest
 if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed.' }
-foreach ($testClass in @('SelectedLinesTest', 'GitIndexTransactionTest')) {
+foreach ($testClass in @('SelectedLinesTest', 'SelectedReplacementTest', 'GitIndexTransactionTest', 'SourceLineMappingTest', 'SourceMarkerRangesTest')) {
     & "$JdkPath\bin\java.exe" -cp "$testClasses;$classes;$cp" "io.github.youjiaxing.diffnav.$testClass"
     if ($LASTEXITCODE -ne 0) { throw "$testClass failed." }
 }

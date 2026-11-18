@@ -3,6 +3,8 @@ param(
     [string]$JdkPath = $env:JAVA_HOME,
     [string]$ConfigPath,
     [string]$SystemPath,
+    [int[]]$WaitProcessId,
+    [switch]$UseStartupQueue,
     [switch]$VerifyOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -23,6 +25,10 @@ $cp = "$work;$IdePath\lib\*"
 & "$JdkPath\bin\javac.exe" -cp "$IdePath\lib\*" -d $work "$PSScriptRoot\QueuePluginUpdate.java"
 if ($LASTEXITCODE -ne 0) { throw 'Installer helper compilation failed.' }
 if ($VerifyOnly) {
+    if (!$UseStartupQueue) {
+        & "$PSScriptRoot/test-offline-update.ps1" -IdePath $IdePath -JdkPath $JdkPath
+        return
+    }
     $simulation = Join-Path $work ('simulation-' + [guid]::NewGuid().ToString('N'))
     $pluginLib = Join-Path $simulation 'plugins\git-diff-review\lib'
     New-Item -ItemType Directory -Path $pluginLib -Force | Out-Null
@@ -32,6 +38,10 @@ if ($VerifyOnly) {
     Set-Content -LiteralPath (Join-Path $legacyLib 'legacy-version.jar') -Value 'old plugin ID fixture'
     & "$JdkPath\bin\java.exe" '--add-exports=java.base/sun.nio.fs=ALL-UNNAMED' -cp $cp QueuePluginUpdate simulate "$simulation\action.script" $archive "$simulation\plugins" $pluginVersion
     if ($LASTEXITCODE -ne 0) { throw 'Deferred installation simulation failed.' }
+    return
+}
+if (!$UseStartupQueue) {
+    & "$PSScriptRoot/prepare-local-update.ps1" -IdePath $IdePath -JdkPath $JdkPath -ConfigPath $ConfigPath -SystemPath $SystemPath -Archive $archive -Version $pluginVersion -WaitProcessId $WaitProcessId
     return
 }
 $plugins = Join-Path ([IO.Path]::GetFullPath($ConfigPath)) 'plugins'

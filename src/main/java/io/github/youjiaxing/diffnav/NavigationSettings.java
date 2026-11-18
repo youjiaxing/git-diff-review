@@ -22,6 +22,7 @@ public final class NavigationSettings implements PersistentStateComponent<Naviga
         public boolean enabled = true;
         public boolean autoStart = true;
         public boolean openNewFilesInDiff = true;
+        public boolean sourceStaging = true;
         @OptionTag(converter = TargetScopeConverter.class)
         public TargetScope targetScope = TargetScope.FOLLOW_TARGET;
     }

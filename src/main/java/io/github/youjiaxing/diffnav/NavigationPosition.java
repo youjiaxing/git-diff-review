@@ -29,6 +29,8 @@ final class NavigationPosition implements AutoCloseable {
 
     static NavigationPosition capture(Document document, int offset) {
         offset = Math.clamp(offset, 0, document.getTextLength());
+        if (document.getLineCount() == 0)
+            return new NavigationPosition(document.createRangeMarker(0, 0), "", "", 0, "", 0, false, false);
         int end = offset;
         var text = document.getImmutableCharSequence();
         while (end < Math.min(text.length(), offset + 128) && Character.isJavaIdentifierPart(text.charAt(end))) end++;
